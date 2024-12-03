@@ -27,7 +27,7 @@ const swaggerOptions = {
         info: {
             title: 'G2 Esports Players API',
             version: '1.0.0',
-            description: 'API para gestionar los datos de jugadores de G2 Esports',
+            description: 'API para gestionar los datos de jugadores y años de G2 Esports',
         },
         servers: [
             {
@@ -45,6 +45,15 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
  * @swagger
  * components:
  *   schemas:
+ *     Year:
+ *       type: object
+ *       properties:
+ *         year_identifier:
+ *           type: string
+ *           description: Identificador único del año (e.g., "2016.1")
+ *         label:
+ *           type: string
+ *           description: Etiqueta legible del año (e.g., "2016 Spring")
  *     Player:
  *       type: object
  *       properties:
@@ -83,6 +92,31 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
  *           type: string
  *           description: Títulos obtenidos por el jugador
  */
+
+/**
+ * @swagger
+ * /years:
+ *   get:
+ *     summary: Obtener todos los años disponibles
+ *     tags: [Years]
+ *     responses:
+ *       200:
+ *         description: Lista de años disponibles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Year'
+ */
+app.get('/years', async (req, res) => {
+    try {
+        const result = await db.execute('SELECT year_identifier, label FROM years');
+        res.json(result.rows);
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
 
 /**
  * @swagger
