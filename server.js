@@ -42,180 +42,83 @@ const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 /**
- * @swagger
- * components:
- *   schemas:
- *     Year:
- *       type: object
- *       properties:
- *         year_identifier:
- *           type: string
- *           description: Identificador único del año (e.g., "2016.1")
- *         label:
- *           type: string
- *           description: Etiqueta legible del año (e.g., "2016 Spring")
- *     Player:
- *       type: object
- *       properties:
- *         id:
- *           type: integer
- *           description: ID único del jugador
- *         nickname:
- *           type: string
- *           description: Nickname del jugador
- *         name:
- *           type: string
- *           description: Nombre completo del jugador
- *         country:
- *           type: string
- *           description: País de origen
- *         birthday:
- *           type: string
- *           format: date
- *           description: Fecha de nacimiento
- *         age:
- *           type: integer
- *           description: Edad
- *         team:
- *           type: string
- *           description: Equipo actual
- *         position:
- *           type: string
- *           description: Posición de juego
- *         years:
- *           type: string
- *           description: Años en los que jugó para el equipo
- *         img:
- *           type: string
- *           description: URL de la imagen del jugador
- *         trivia:
- *           type: string
- *           description: Datos curiosos del jugador
- *         titles:
- *           type: string
- *           description: Títulos obtenidos por el jugador
+ * Middleware para loguear las solicitudes
  */
+app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+    next();
+});
 
 /**
- * @swagger
- * /years:
- *   get:
- *     summary: Obtener todos los años disponibles
- *     tags: [Years]
- *     responses:
- *       200:
- *         description: Lista de años disponibles
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Year'
+ * Endpoint para obtener todos los años disponibles
  */
 app.get('/years', async (req, res) => {
     try {
         const result = await db.execute('SELECT year_identifier, label FROM years');
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Error al obtener los años:", err);
+        res.status(500).json({ error: "Error interno del servidor" });
     }
 });
 
 /**
- * @swagger
- * /players:
- *   get:
- *     summary: Obtener todos los jugadores
- *     tags: [Players]
- *     responses:
- *       200:
- *         description: Lista de jugadores
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 $ref: '#/components/schemas/Player'
+ * Endpoint para obtener todos los jugadores de un año específico
  */
-app.get('/players', async (req, res) => {
+app.get('/players/year/:year', async (req, res) => {
     try {
-        const result = await db.execute('SELECT * FROM players');
+        const { year } = req.params;
+
+        // Validación básica del parámetro
+        if (!year || typeof year !== 'string') {
+            return res.status(400).json({ error: "El parámetro 'year' es requerido y debe ser un string" });
+        }
+
+        const result = await db.execute(
+            'SELECT * FROM players WHERE years LIKE ?',
+            [`%${year}%`]
+        );
+
         res.json(result.rows);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Error al obtener los jugadores por año:", err);
+        res.status(500).json({ error: "Error interno del servidor" });
     }
 });
 
 /**
- * @swagger
- * /players/id/{id}:
- *   get:
- *     summary: Obtener un jugador por su ID
- *     tags: [Players]
- *     parameters:
- *       - in: path
- *         name: id
- *         schema:
- *           type: integer
- *         required: true
- *         description: ID del jugador
- *     responses:
- *       200:
- *         description: Datos del jugador
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Player'
- *       404:
- *         description: Jugador no encontrado
+ * Endpoint para obtener un jugador por ID o nickname
  */
-app.get('/players/id/:id', async (req, res) => {
+app.get('/players/:identifier', async (req, res) => {
     try {
-        const { id } = req.params;
-        const result = await db.execute('SELECT * FROM players WHERE id = ?', [id]);
+        const { identifier } = req.params;
+
+        // Validación básica del parámetro
+        if (!identifier) {
+            return res.status(400).json({ error: "El parámetro 'identifier' es requerido" });
+        }
+
+        const result = await db.execute(
+            'SELECT * FROM players WHERE id = ? OR nickname = ?',
+            [identifier, identifier]
+        );
+
         if (result.rows.length === 0) {
             return res.status(404).json({ message: 'Jugador no encontrado' });
         }
+
         res.json(result.rows[0]);
     } catch (err) {
-        res.status(500).json({ error: err.message });
+        console.error("Error al obtener el jugador:", err);
+        res.status(500).json({ error: "Error interno del servidor" });
     }
 });
 
 /**
- * @swagger
- * /players/{nickname}:
- *   get:
- *     summary: Obtener un jugador por su nickname
- *     tags: [Players]
- *     parameters:
- *       - in: path
- *         name: nickname
- *         schema:
- *           type: string
- *         required: true
- *         description: Nickname del jugador
- *     responses:
- *       200:
- *         description: Datos del jugador
- *         content:
- *           application/json:
- *             schema:
- *               $ref: '#/components/schemas/Player'
- *       404:
- *         description: Jugador no encontrado
+ * Endpoint para verificar que el servidor está corriendo
  */
-app.get('/players/:nickname', async (req, res) => {
-    try {
-        const { nickname } = req.params;
-        const result = await db.execute('SELECT * FROM players WHERE nickname = ?', [nickname]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Jugador no encontrado' });
-        }
-        res.json(result.rows[0]);
-    } catch (err) {
-        res.status(500).json({ error: err.message });
-    }
+app.get('/health', (req, res) => {
+    res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Iniciar servidor
