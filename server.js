@@ -57,6 +57,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
  *     Player:
  *       type: object
  *       properties:
+ *         id:
+ *           type: integer
+ *           description: ID único del jugador
  *         nickname:
  *           type: string
  *           description: Nickname del jugador
@@ -145,29 +148,37 @@ app.get('/players', async (req, res) => {
 
 /**
  * @swagger
- * /players:
- *   post:
- *     summary: Añadir un nuevo jugador
+ * /players/id/{id}:
+ *   get:
+ *     summary: Obtener un jugador por su ID
  *     tags: [Players]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             $ref: '#/components/schemas/Player'
+ *     parameters:
+ *       - in: path
+ *         name: id
+ *         schema:
+ *           type: integer
+ *         required: true
+ *         description: ID del jugador
  *     responses:
- *       201:
- *         description: Jugador añadido con éxito
+ *       200:
+ *         description: Datos del jugador
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Player'
+ *       404:
+ *         description: Jugador no encontrado
  */
-app.post('/players', async (req, res) => {
+app.get('/players/id/:id', async (req, res) => {
     try {
-        const { nickname, name, country, birthday, age, team, position, years, img, trivia, titles } = req.body;
-        const query = `INSERT INTO players (nickname, name, country, birthday, age, team, position, years, img, trivia, titles)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        await db.execute(query, [nickname, name, country, birthday, age, team, position, years, img, trivia, titles]);
-        res.status(201).json({ message: 'Jugador añadido con éxito' });
+        const { id } = req.params;
+        const result = await db.execute('SELECT * FROM players WHERE id = ?', [id]);
+        if (result.rows.length === 0) {
+            return res.status(404).json({ message: 'Jugador no encontrado' });
+        }
+        res.json(result.rows[0]);
     } catch (err) {
-        res.status(400).json({ error: err.message });
+        res.status(500).json({ error: err.message });
     }
 });
 
