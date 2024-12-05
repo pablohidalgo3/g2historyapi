@@ -115,6 +115,19 @@ app.get('/players/:identifier', async (req, res) => {
 });
 
 /**
+ * Endpoint para obtener todos los jugadores
+ */
+app.get('/players', async (req, res) => {
+    try {
+        const result = await db.execute('SELECT * FROM players');
+        res.json(result.rows);
+    } catch (err) {
+        console.error("Error al obtener todos los jugadores:", err);
+        res.status(500).json({ error: "Error interno del servidor" });
+    }
+});
+
+/**
  * Endpoint para verificar que el servidor está corriendo
  */
 app.get('/health', (req, res) => {
