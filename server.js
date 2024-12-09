@@ -20,6 +20,7 @@ const cacheMiddleware = (req, res, next) => {
 // Importar dependencias
 const express = require('express');
 const cors = require('cors');
+const compression = require('compression'); // Nuevo middleware para compresión
 const { createClient } = require('@libsql/client');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -37,6 +38,7 @@ const db = createClient({
 
 // Middlewares
 app.use(cors());
+app.use(compression()); // Compresión de respuestas
 app.use(express.json());
 app.use(cacheMiddleware); // Añadido el middleware de caché
 
@@ -67,7 +69,7 @@ app.use((req, res, next) => {
     next();
 });
 
-// Endpoint para obtener todos los años disponibles con paginación
+// Endpoint para obtener todos los años disponibles
 app.get('/years', async (req, res) => {
     try {
         const result = await db.execute('SELECT year_identifier, label FROM years');
