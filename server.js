@@ -126,15 +126,10 @@ app.get('/players/:identifier', async (req, res) => {
     }
 });
 
-// Endpoint para obtener todos los jugadores con paginación
+// Endpoint para obtener todos los jugadores
 app.get('/players', async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit, 10) || 10; // Default limit to 10
-        const offset = parseInt(req.query.offset, 10) || 0; // Default offset to 0
-        const result = await db.execute(
-            'SELECT * FROM players LIMIT ? OFFSET ?',
-            [limit, offset]
-        );
+        const result = await db.execute('SELECT * FROM players');
         res.json(result.rows);
     } catch (err) {
         console.error("Error al obtener todos los jugadores:", err);
