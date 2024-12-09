@@ -70,12 +70,7 @@ app.use((req, res, next) => {
 // Endpoint para obtener todos los años disponibles con paginación
 app.get('/years', async (req, res) => {
     try {
-        const limit = parseInt(req.query.limit, 10) || 10; // Default limit to 10
-        const offset = parseInt(req.query.offset, 10) || 0; // Default offset to 0
-        const result = await db.execute(
-            'SELECT year_identifier, label FROM years LIMIT ? OFFSET ?',
-            [limit, offset]
-        );
+        const result = await db.execute('SELECT year_identifier, label FROM years');
         res.json(result.rows);
     } catch (err) {
         console.error("Error al obtener los años:", err);
