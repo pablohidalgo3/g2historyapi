@@ -1,3 +1,22 @@
+// Simple in-memory cache object
+const cache = {};
+
+// Middleware for cache handling
+const cacheMiddleware = (req, res, next) => {
+    const cacheKey = req.originalUrl;
+    if (cache[cacheKey]) {
+        console.log("Cache hit:", cacheKey);
+        return res.json(cache[cacheKey]);
+    }
+    console.log("Cache miss:", cacheKey);
+    res.sendResponse = res.json;
+    res.json = (body) => {
+        cache[cacheKey] = body; // Store the response in cache
+        res.sendResponse(body);
+    };
+    next();
+};
+
 // Importar dependencias
 const express = require('express');
 const cors = require('cors');
@@ -19,6 +38,7 @@ const db = createClient({
 // Middlewares
 app.use(cors());
 app.use(express.json());
+app.use(cacheMiddleware); // Añadido el middleware de caché
 
 // Configurar Swagger
 const swaggerOptions = {
@@ -41,20 +61,21 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-/**
- * Middleware para loguear las solicitudes
- */
+// Middleware para loguear las solicitudes
 app.use((req, res, next) => {
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
     next();
 });
 
-/**
- * Endpoint para obtener todos los años disponibles
- */
+// Endpoint para obtener todos los años disponibles con paginación
 app.get('/years', async (req, res) => {
     try {
-        const result = await db.execute('SELECT year_identifier, label FROM years');
+        const limit = parseInt(req.query.limit, 10) || 10; // Default limit to 10
+        const offset = parseInt(req.query.offset, 10) || 0; // Default offset to 0
+        const result = await db.execute(
+            'SELECT year_identifier, label FROM years LIMIT ? OFFSET ?',
+            [limit, offset]
+        );
         res.json(result.rows);
     } catch (err) {
         console.error("Error al obtener los años:", err);
@@ -62,14 +83,11 @@ app.get('/years', async (req, res) => {
     }
 });
 
-/**
- * Endpoint para obtener todos los jugadores de un año específico
- */
+// Endpoint para obtener todos los jugadores de un año específico
 app.get('/players/year/:year', async (req, res) => {
     try {
         const { year } = req.params;
 
-        // Validación básica del parámetro
         if (!year || typeof year !== 'string') {
             return res.status(400).json({ error: "El parámetro 'year' es requerido y debe ser un string" });
         }
@@ -86,14 +104,11 @@ app.get('/players/year/:year', async (req, res) => {
     }
 });
 
-/**
- * Endpoint para obtener un jugador por ID o nickname
- */
+// Endpoint para obtener un jugador por ID o nickname
 app.get('/players/:identifier', async (req, res) => {
     try {
         const { identifier } = req.params;
 
-        // Validación básica del parámetro
         if (!identifier) {
             return res.status(400).json({ error: "El parámetro 'identifier' es requerido" });
         }
@@ -114,12 +129,15 @@ app.get('/players/:identifier', async (req, res) => {
     }
 });
 
-/**
- * Endpoint para obtener todos los jugadores
- */
+// Endpoint para obtener todos los jugadores con paginación
 app.get('/players', async (req, res) => {
     try {
-        const result = await db.execute('SELECT * FROM players');
+        const limit = parseInt(req.query.limit, 10) || 10; // Default limit to 10
+        const offset = parseInt(req.query.offset, 10) || 0; // Default offset to 0
+        const result = await db.execute(
+            'SELECT * FROM players LIMIT ? OFFSET ?',
+            [limit, offset]
+        );
         res.json(result.rows);
     } catch (err) {
         console.error("Error al obtener todos los jugadores:", err);
@@ -127,9 +145,7 @@ app.get('/players', async (req, res) => {
     }
 });
 
-/**
- * Endpoint para verificar que el servidor está corriendo
- */
+// Endpoint para verificar que el servidor está corriendo
 app.get('/health', (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
