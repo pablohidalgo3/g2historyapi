@@ -11,6 +11,7 @@
   "description": "",
   "dependencies": {
     "@libsql/client": "^0.14.0",
+    "compression": "^1.7.5",
     "cors": "^2.8.5",
     "dotenv": "^16.4.6",
     "express": "^4.21.1",
