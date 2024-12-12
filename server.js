@@ -8,7 +8,7 @@ const cacheMiddleware = (req, res, next) => {
 
     if (
         cache[cacheKey] &&
-        now - cache[cacheKey].timestamp < 120000 // TTL de 2 minutos (120,000 ms)
+        now - cache[cacheKey].timestamp < 43200000 // TTL de 2 minutos (120,000 ms)
     ) {
         console.log("Cache hit:", cacheKey);
         return res.json(cache[cacheKey].data);
