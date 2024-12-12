@@ -1,17 +1,23 @@
 // Simple in-memory cache object
 const cache = {};
 
-// Middleware for cache handling
+// Modificar el middleware para añadir TTL
 const cacheMiddleware = (req, res, next) => {
     const cacheKey = req.originalUrl;
-    if (cache[cacheKey]) {
+    const now = Date.now();
+
+    if (
+        cache[cacheKey] &&
+        now - cache[cacheKey].timestamp < 120000 // TTL de 2 minutos (120,000 ms)
+    ) {
         console.log("Cache hit:", cacheKey);
-        return res.json(cache[cacheKey]);
+        return res.json(cache[cacheKey].data);
     }
+
     console.log("Cache miss:", cacheKey);
     res.sendResponse = res.json;
     res.json = (body) => {
-        cache[cacheKey] = body; // Store the response in cache
+        cache[cacheKey] = { data: body, timestamp: now }; // Guardar con timestamp
         res.sendResponse(body);
     };
     next();
@@ -40,7 +46,7 @@ const db = createClient({
 app.use(cors());
 app.use(compression()); // Compresión de respuestas
 app.use(express.json());
-//app.use(cacheMiddleware); // Añadido el middleware de caché
+app.use(cacheMiddleware); // Añadido el middleware de caché
 
 // Configurar Swagger
 const swaggerOptions = {
