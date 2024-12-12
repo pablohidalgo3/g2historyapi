@@ -40,7 +40,7 @@ const db = createClient({
 app.use(cors());
 app.use(compression()); // Compresión de respuestas
 app.use(express.json());
-app.use(cacheMiddleware); // Añadido el middleware de caché
+//app.use(cacheMiddleware); // Añadido el middleware de caché
 
 // Configurar Swagger
 const swaggerOptions = {
