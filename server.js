@@ -142,6 +142,13 @@ app.get('/health', (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
+// Endpoint para limpiar el caché
+app.post('/cache/clear', (req, res) => {
+    Object.keys(cache).forEach(key => delete cache[key]); // Elimina todas las entradas del caché
+    res.json({ message: "Cache cleared" });
+});
+
+
 // Iniciar servidor
 app.listen(PORT, () => {
     console.log(`Servidor corriendo en http://localhost:${PORT}`);
