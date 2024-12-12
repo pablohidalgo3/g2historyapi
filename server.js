@@ -144,9 +144,12 @@ app.get('/health', (req, res) => {
 
 // Endpoint para limpiar el caché
 app.post('/cache/clear', (req, res) => {
-    Object.keys(cache).forEach(key => delete cache[key]); // Elimina todas las entradas del caché
-    res.json({ message: "Cache cleared" });
+    const clearedKeys = Object.keys(cache);
+    Object.keys(cache).forEach((key) => delete cache[key]); // Elimina todas las entradas
+    console.log(`Cache cleared for keys: ${clearedKeys.join(', ')}`);
+    res.json({ message: "Cache cleared", clearedKeys });
 });
+
 
 
 // Iniciar servidor
