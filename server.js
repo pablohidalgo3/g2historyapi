@@ -1,32 +1,7 @@
-// Simple in-memory cache object
-const cache = {};
-
-// Modificar el middleware para añadir TTL
-const cacheMiddleware = (req, res, next) => {
-    const cacheKey = req.originalUrl;
-    const now = Date.now();
-
-    if (
-        cache[cacheKey] &&
-        now - cache[cacheKey].timestamp < 43200000 // TTL de 2 minutos (120,000 ms)
-    ) {
-        console.log("Cache hit:", cacheKey);
-        return res.json(cache[cacheKey].data);
-    }
-
-    console.log("Cache miss:", cacheKey);
-    res.sendResponse = res.json;
-    res.json = (body) => {
-        cache[cacheKey] = { data: body, timestamp: now }; // Guardar con timestamp
-        res.sendResponse(body);
-    };
-    next();
-};
-
 // Importar dependencias
 const express = require('express');
 const cors = require('cors');
-const compression = require('compression'); // Nuevo middleware para compresión
+const compression = require('compression'); // Middleware para compresión
 const { createClient } = require('@libsql/client');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
@@ -42,11 +17,32 @@ const db = createClient({
     authToken: process.env.TURSO_AUTH, // Token de autenticación
 });
 
+// Objeto simple de caché en memoria
+const cache = {};
+
+// Middleware de caché sin TTL
+const cacheMiddleware = (req, res, next) => {
+    const cacheKey = req.originalUrl;
+
+    if (cache[cacheKey]) {
+        console.log("Cache hit:", cacheKey);
+        return res.json(cache[cacheKey]);
+    }
+
+    console.log("Cache miss:", cacheKey);
+    res.sendResponse = res.json;
+    res.json = (body) => {
+        cache[cacheKey] = body; // Guardar la respuesta en la caché
+        res.sendResponse(body);
+    };
+    next();
+};
+
 // Middlewares
 app.use(cors());
 app.use(compression()); // Compresión de respuestas
 app.use(express.json());
-app.use(cacheMiddleware); // Añadido el middleware de caché
+app.use(cacheMiddleware); // Añadir el middleware de caché
 
 // Configurar Swagger
 const swaggerOptions = {
@@ -148,15 +144,13 @@ app.get('/health', (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// Endpoint para limpiar el caché
+// Endpoint para limpiar la caché manualmente
 app.post('/cache/clear', (req, res) => {
     const clearedKeys = Object.keys(cache);
-    Object.keys(cache).forEach((key) => delete cache[key]); // Elimina todas las entradas
+    Object.keys(cache).forEach((key) => delete cache[key]); // Eliminar todas las entradas
     console.log(`Cache cleared for keys: ${clearedKeys.join(', ')}`);
     res.json({ message: "Cache cleared", clearedKeys });
 });
-
-
 
 // Iniciar servidor
 app.listen(PORT, () => {
