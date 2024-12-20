@@ -1,48 +1,28 @@
-// Importar dependencias
 const express = require('express');
 const cors = require('cors');
-const compression = require('compression'); // Middleware para compresión
+const compression = require('compression');
 const { createClient } = require('@libsql/client');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
-require('dotenv').config(); // Cargar variables de entorno desde .env
+const apicache = require('apicache');
+require('dotenv').config();
 
-// Crear aplicación Express
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Configurar cliente de LibSQL (Turso)
 const db = createClient({
-    url: process.env.TURSO_URL,       // URL de la base de datos Turso
-    authToken: process.env.TURSO_AUTH, // Token de autenticación
+    url: process.env.TURSO_URL,
+    authToken: process.env.TURSO_AUTH,
 });
-
-// Objeto simple de caché en memoria
-const cache = {};
-
-// Middleware de caché sin TTL
-const cacheMiddleware = (req, res, next) => {
-    const cacheKey = req.originalUrl;
-
-    if (cache[cacheKey]) {
-        console.log("Cache hit:", cacheKey);
-        return res.json(cache[cacheKey]);
-    }
-
-    console.log("Cache miss:", cacheKey);
-    res.sendResponse = res.json;
-    res.json = (body) => {
-        cache[cacheKey] = body; // Guardar la respuesta en la caché
-        res.sendResponse(body);
-    };
-    next();
-};
 
 // Middlewares
 app.use(cors());
-app.use(compression()); // Compresión de respuestas
+app.use(compression());
 app.use(express.json());
-app.use(cacheMiddleware); // Añadir el middleware de caché
+
+// Configurar apicache
+const cache = apicache.middleware;
 
 // Configurar Swagger
 const swaggerOptions = {
@@ -60,7 +40,7 @@ const swaggerOptions = {
             },
         ],
     },
-    apis: ['./server.js'], // Documentar los endpoints dentro de este archivo
+    apis: ['./server.js'],
 };
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
@@ -72,7 +52,7 @@ app.use((req, res, next) => {
 });
 
 // Endpoint para obtener todos los años disponibles
-app.get('/years', async (req, res) => {
+app.get('/years', cache('1 hour'), async (req, res) => {
     try {
         const result = await db.execute('SELECT year_identifier, label FROM years');
         res.json(result.rows);
@@ -83,7 +63,7 @@ app.get('/years', async (req, res) => {
 });
 
 // Endpoint para obtener todos los jugadores de un año específico
-app.get('/players/year/:year', async (req, res) => {
+app.get('/players/year/:year', cache('1 hour'), async (req, res) => {
     try {
         const { year } = req.params;
 
@@ -104,7 +84,7 @@ app.get('/players/year/:year', async (req, res) => {
 });
 
 // Endpoint para obtener un jugador por ID o nickname
-app.get('/players/:identifier', async (req, res) => {
+app.get('/players/:identifier', cache('1 hour'), async (req, res) => {
     try {
         const { identifier } = req.params;
 
@@ -129,7 +109,7 @@ app.get('/players/:identifier', async (req, res) => {
 });
 
 // Endpoint para obtener todos los jugadores
-app.get('/players', async (req, res) => {
+app.get('/players', cache('1 hour'), async (req, res) => {
     try {
         const result = await db.execute('SELECT * FROM players');
         res.json(result.rows);
@@ -139,17 +119,15 @@ app.get('/players', async (req, res) => {
     }
 });
 
+// Endpoint para limpiar la caché manualmente
+app.post('/cache/clear', (req, res) => {
+    apicache.clear();
+    res.json({ message: 'Caché limpiada' });
+});
+
 // Endpoint para verificar que el servidor está corriendo
 app.get('/health', (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
-});
-
-// Endpoint para limpiar la caché manualmente
-app.post('/cache/clear', (req, res) => {
-    const clearedKeys = Object.keys(cache);
-    Object.keys(cache).forEach((key) => delete cache[key]); // Eliminar todas las entradas
-    console.log(`Cache cleared for keys: ${clearedKeys.join(', ')}`);
-    res.json({ message: "Cache cleared", clearedKeys });
 });
 
 // Iniciar servidor
