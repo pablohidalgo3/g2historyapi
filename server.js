@@ -21,8 +21,8 @@ app.use(cors());
 app.use(compression());
 app.use(express.json());
 
-// Configurar apicache
-const cache = apicache.middleware;
+// Configurar apicache sin TTL
+const cache = apicache.options({ defaultDuration: 0 }).middleware;
 
 // Configurar Swagger
 const swaggerOptions = {
@@ -51,8 +51,27 @@ app.use((req, res, next) => {
     next();
 });
 
-// Endpoint para obtener todos los años disponibles
-app.get('/years', cache('1 hour'), async (req, res) => {
+/**
+ * @swagger
+ * /years:
+ *   get:
+ *     summary: Obtiene todos los años disponibles
+ *     responses:
+ *       200:
+ *         description: Lista de años disponibles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   year_identifier:
+ *                     type: string
+ *                   label:
+ *                     type: string
+ */
+app.get('/years', cache(), async (req, res) => {
     try {
         const result = await db.execute('SELECT year_identifier, label FROM years');
         res.json(result.rows);
@@ -62,8 +81,29 @@ app.get('/years', cache('1 hour'), async (req, res) => {
     }
 });
 
-// Endpoint para obtener todos los jugadores de un año específico
-app.get('/players/year/:year', cache('1 hour'), async (req, res) => {
+/**
+ * @swagger
+ * /players/year/{year}:
+ *   get:
+ *     summary: Obtiene todos los jugadores de un año específico
+ *     parameters:
+ *       - in: path
+ *         name: year
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: El año para filtrar los jugadores
+ *     responses:
+ *       200:
+ *         description: Lista de jugadores del año especificado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ */
+app.get('/players/year/:year', cache(), async (req, res) => {
     try {
         const { year } = req.params;
 
@@ -83,8 +123,27 @@ app.get('/players/year/:year', cache('1 hour'), async (req, res) => {
     }
 });
 
-// Endpoint para obtener un jugador por ID o nickname
-app.get('/players/:identifier', cache('1 hour'), async (req, res) => {
+/**
+ * @swagger
+ * /players/{identifier}:
+ *   get:
+ *     summary: Obtiene un jugador por ID o nickname
+ *     parameters:
+ *       - in: path
+ *         name: identifier
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID o nickname del jugador
+ *     responses:
+ *       200:
+ *         description: Detalles del jugador
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ */
+app.get('/players/:identifier', cache(), async (req, res) => {
     try {
         const { identifier } = req.params;
 
@@ -108,8 +167,22 @@ app.get('/players/:identifier', cache('1 hour'), async (req, res) => {
     }
 });
 
-// Endpoint para obtener todos los jugadores
-app.get('/players', cache('1 hour'), async (req, res) => {
+/**
+ * @swagger
+ * /players:
+ *   get:
+ *     summary: Obtiene todos los jugadores
+ *     responses:
+ *       200:
+ *         description: Lista de todos los jugadores
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ */
+app.get('/players', cache(), async (req, res) => {
     try {
         const result = await db.execute('SELECT * FROM players');
         res.json(result.rows);
@@ -119,13 +192,29 @@ app.get('/players', cache('1 hour'), async (req, res) => {
     }
 });
 
-// Endpoint para limpiar la caché manualmente
+/**
+ * @swagger
+ * /cache/clear:
+ *   post:
+ *     summary: Limpia manualmente la caché
+ *     responses:
+ *       200:
+ *         description: Confirmación de que la caché ha sido limpiada
+ */
 app.post('/cache/clear', (req, res) => {
     apicache.clear();
     res.json({ message: 'Caché limpiada' });
 });
 
-// Endpoint para verificar que el servidor está corriendo
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Verifica que el servidor está corriendo
+ *     responses:
+ *       200:
+ *         description: Estado del servidor
+ */
 app.get('/health', (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
