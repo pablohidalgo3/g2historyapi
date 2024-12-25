@@ -35,6 +35,10 @@ const swaggerOptions = {
         },
         servers: [
             {
+                url: 'https://g2historyapi-production.up.railway.app', // Cambia esto a la URL real de producción
+                description: 'Servidor de producción',
+            },
+            {
                 url: `http://localhost:${PORT}`,
                 description: 'Servidor local',
             },
