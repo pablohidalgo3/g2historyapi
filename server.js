@@ -1,16 +1,16 @@
 const express = require('express');
 const cors = require('cors');
 const compression = require('compression');
-const { createClient } = require('@libsql/client');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const apicache = require('apicache');
+const { createClient } = require('@libsql/client');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Configurar cliente de LibSQL (Turso)
+// Configurar cliente Turso
 const db = createClient({
     url: process.env.TURSO_URL,
     authToken: process.env.TURSO_AUTH,
@@ -21,10 +21,10 @@ app.use(cors());
 app.use(compression());
 app.use(express.json());
 
-// Configurar apicache sin TTL
-const cache = apicache.options({ defaultDuration: 0 }).middleware;
+// Inicializar caché
+const cache = apicache.middleware;
 
-// Configurar Swagger
+// Configuración de Swagger
 const swaggerOptions = {
     definition: {
         openapi: '3.0.0',
@@ -34,10 +34,6 @@ const swaggerOptions = {
             description: 'API para gestionar los datos de jugadores y años de G2 Esports',
         },
         servers: [
-            {
-                url: 'https://g2historyapi-production.up.railway.app', // Cambia esto a la URL real de producción
-                description: 'Servidor de producción',
-            },
             {
                 url: `http://localhost:${PORT}`,
                 description: 'Servidor local',
@@ -49,12 +45,7 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
-// Middleware para loguear las solicitudes
-app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
-    next();
-});
-
+// Rutas de la API
 /**
  * @swagger
  * /years:
@@ -63,25 +54,33 @@ app.use((req, res, next) => {
  *     responses:
  *       200:
  *         description: Lista de años disponibles
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   year_identifier:
- *                     type: string
- *                   label:
- *                     type: string
  */
-app.get('/years', cache(), async (req, res) => {
+app.get('/years', cache('5 minutes'), async (req, res) => {
     try {
-        const result = await db.execute('SELECT year_identifier, label FROM years');
+        const result = await db.execute('SELECT * FROM years');
         res.json(result.rows);
-    } catch (err) {
-        console.error("Error al obtener los años:", err);
-        res.status(500).json({ error: "Error interno del servidor" });
+    } catch (error) {
+        console.error('Error al obtener los años:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
+});
+
+/**
+ * @swagger
+ * /players:
+ *   get:
+ *     summary: Obtiene todos los jugadores
+ *     responses:
+ *       200:
+ *         description: Lista de jugadores
+ */
+app.get('/players', cache('5 minutes'), async (req, res) => {
+    try {
+        const result = await db.execute('SELECT * FROM players');
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Error al obtener jugadores:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -89,41 +88,23 @@ app.get('/years', cache(), async (req, res) => {
  * @swagger
  * /players/year/{year}:
  *   get:
- *     summary: Obtiene todos los jugadores de un año específico
+ *     summary: Obtiene jugadores por año
  *     parameters:
  *       - in: path
  *         name: year
  *         required: true
  *         schema:
  *           type: string
- *         description: El año para filtrar los jugadores
- *     responses:
- *       200:
- *         description: Lista de jugadores del año especificado
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
+ *         description: Año para filtrar
  */
-app.get('/players/year/:year', cache(), async (req, res) => {
+app.get('/players/year/:year', cache('5 minutes'), async (req, res) => {
     try {
         const { year } = req.params;
-
-        if (!year || typeof year !== 'string') {
-            return res.status(400).json({ error: "El parámetro 'year' es requerido y debe ser un string" });
-        }
-
-        const result = await db.execute(
-            'SELECT * FROM players WHERE years LIKE ?',
-            [`%${year}%`]
-        );
-
+        const result = await db.execute('SELECT * FROM players WHERE years LIKE ?', [`%${year}%`]);
         res.json(result.rows);
-    } catch (err) {
-        console.error("Error al obtener los jugadores por año:", err);
-        res.status(500).json({ error: "Error interno del servidor" });
+    } catch (error) {
+        console.error('Error al obtener jugadores por año:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
@@ -139,61 +120,29 @@ app.get('/players/year/:year', cache(), async (req, res) => {
  *         schema:
  *           type: string
  *         description: ID o nickname del jugador
- *     responses:
- *       200:
- *         description: Detalles del jugador
- *         content:
- *           application/json:
- *             schema:
- *               type: object
  */
-app.get('/players/:identifier', cache(), async (req, res) => {
+app.get('/players/:identifier', cache('5 minutes'), async (req, res) => {
     try {
         const { identifier } = req.params;
-
-        if (!identifier) {
-            return res.status(400).json({ error: "El parámetro 'identifier' es requerido" });
-        }
-
-        const result = await db.execute(
-            'SELECT * FROM players WHERE id = ? OR nickname = ?',
-            [identifier, identifier]
-        );
-
+        const result = await db.execute('SELECT * FROM players WHERE id = ? OR nickname = ?', [identifier, identifier]);
         if (result.rows.length === 0) {
-            return res.status(404).json({ message: 'Jugador no encontrado' });
+            return res.status(404).json({ error: 'Jugador no encontrado' });
         }
-
         res.json(result.rows[0]);
-    } catch (err) {
-        console.error("Error al obtener el jugador:", err);
-        res.status(500).json({ error: "Error interno del servidor" });
+    } catch (error) {
+        console.error('Error al obtener jugador:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
 /**
  * @swagger
- * /players:
+ * /health:
  *   get:
- *     summary: Obtiene todos los jugadores
- *     responses:
- *       200:
- *         description: Lista de todos los jugadores
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
+ *     summary: Verifica que el servidor esté funcionando
  */
-app.get('/players', cache(), async (req, res) => {
-    try {
-        const result = await db.execute('SELECT * FROM players');
-        res.json(result.rows);
-    } catch (err) {
-        console.error("Error al obtener todos los jugadores:", err);
-        res.status(500).json({ error: "Error interno del servidor" });
-    }
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 /**
@@ -201,26 +150,10 @@ app.get('/players', cache(), async (req, res) => {
  * /cache/clear:
  *   post:
  *     summary: Limpia manualmente la caché
- *     responses:
- *       200:
- *         description: Confirmación de que la caché ha sido limpiada
  */
 app.post('/cache/clear', (req, res) => {
     apicache.clear();
     res.json({ message: 'Caché limpiada' });
-});
-
-/**
- * @swagger
- * /health:
- *   get:
- *     summary: Verifica que el servidor está corriendo
- *     responses:
- *       200:
- *         description: Estado del servidor
- */
-app.get('/health', (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Iniciar servidor
