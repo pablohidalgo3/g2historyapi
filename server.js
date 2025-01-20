@@ -3,7 +3,6 @@ const cors = require('cors');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
-const apicache = require('apicache');
 const { createClient } = require('@libsql/client');
 require('dotenv').config();
 
@@ -21,8 +20,13 @@ app.use(cors());
 app.use(compression());
 app.use(express.json());
 
-// Inicializar caché
-const cache = apicache.middleware;
+// Inicializar caché en memoria
+const memoryCache = {
+    years: null,
+    players: null,
+    playersByYear: new Map(),
+    playerByIdOrNickname: new Map(),
+};
 
 // Configuración de Swagger
 const swaggerOptions = {
@@ -38,26 +42,26 @@ const swaggerOptions = {
                 url: `http://localhost:${PORT}`,
                 description: 'Servidor local',
             },
+            {
+                url: 'https://g2historyapi-production.up.railway.app/', // Reemplaza <tu-api> con el subdominio asignado por Railway
+                description: 'Servidor de producción (Railway)',
+            },
         ],
     },
     apis: ['./server.js'],
 };
+
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Rutas de la API
-/**
- * @swagger
- * /years:
- *   get:
- *     summary: Obtiene todos los años disponibles
- *     responses:
- *       200:
- *         description: Lista de años disponibles
- */
-app.get('/years', cache('5 minutes'), async (req, res) => {
+app.get('/years', async (req, res) => {
     try {
+        if (memoryCache.years) {
+            return res.json(memoryCache.years);
+        }
         const result = await db.execute('SELECT * FROM years');
+        memoryCache.years = result.rows; // Guardar en caché
         res.json(result.rows);
     } catch (error) {
         console.error('Error al obtener los años:', error.message);
@@ -65,18 +69,13 @@ app.get('/years', cache('5 minutes'), async (req, res) => {
     }
 });
 
-/**
- * @swagger
- * /players:
- *   get:
- *     summary: Obtiene todos los jugadores
- *     responses:
- *       200:
- *         description: Lista de jugadores
- */
-app.get('/players', cache('5 minutes'), async (req, res) => {
+app.get('/players', async (req, res) => {
     try {
+        if (memoryCache.players) {
+            return res.json(memoryCache.players);
+        }
         const result = await db.execute('SELECT * FROM players');
+        memoryCache.players = result.rows; // Guardar en caché
         res.json(result.rows);
     } catch (error) {
         console.error('Error al obtener jugadores:', error.message);
@@ -84,23 +83,14 @@ app.get('/players', cache('5 minutes'), async (req, res) => {
     }
 });
 
-/**
- * @swagger
- * /players/year/{year}:
- *   get:
- *     summary: Obtiene jugadores por año
- *     parameters:
- *       - in: path
- *         name: year
- *         required: true
- *         schema:
- *           type: string
- *         description: Año para filtrar
- */
-app.get('/players/year/:year', cache('5 minutes'), async (req, res) => {
+app.get('/players/year/:year', async (req, res) => {
+    const { year } = req.params;
     try {
-        const { year } = req.params;
+        if (memoryCache.playersByYear.has(year)) {
+            return res.json(memoryCache.playersByYear.get(year));
+        }
         const result = await db.execute('SELECT * FROM players WHERE years LIKE ?', [`%${year}%`]);
+        memoryCache.playersByYear.set(year, result.rows); // Guardar en caché
         res.json(result.rows);
     } catch (error) {
         console.error('Error al obtener jugadores por año:', error.message);
@@ -108,26 +98,17 @@ app.get('/players/year/:year', cache('5 minutes'), async (req, res) => {
     }
 });
 
-/**
- * @swagger
- * /players/{identifier}:
- *   get:
- *     summary: Obtiene un jugador por ID o nickname
- *     parameters:
- *       - in: path
- *         name: identifier
- *         required: true
- *         schema:
- *           type: string
- *         description: ID o nickname del jugador
- */
-app.get('/players/:identifier', cache('5 minutes'), async (req, res) => {
+app.get('/players/:identifier', async (req, res) => {
+    const { identifier } = req.params;
     try {
-        const { identifier } = req.params;
+        if (memoryCache.playerByIdOrNickname.has(identifier)) {
+            return res.json(memoryCache.playerByIdOrNickname.get(identifier));
+        }
         const result = await db.execute('SELECT * FROM players WHERE id = ? OR nickname = ?', [identifier, identifier]);
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Jugador no encontrado' });
         }
+        memoryCache.playerByIdOrNickname.set(identifier, result.rows[0]); // Guardar en caché
         res.json(result.rows[0]);
     } catch (error) {
         console.error('Error al obtener jugador:', error.message);
@@ -135,25 +116,17 @@ app.get('/players/:identifier', cache('5 minutes'), async (req, res) => {
     }
 });
 
-/**
- * @swagger
- * /health:
- *   get:
- *     summary: Verifica que el servidor esté funcionando
- */
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.post('/cache/clear', (req, res) => {
+    memoryCache.years = null;
+    memoryCache.players = null;
+    memoryCache.playersByYear.clear();
+    memoryCache.playerByIdOrNickname.clear();
+    res.json({ message: 'Caché limpiada' });
 });
 
-/**
- * @swagger
- * /cache/clear:
- *   post:
- *     summary: Limpia manualmente la caché
- */
-app.post('/cache/clear', (req, res) => {
-    apicache.clear();
-    res.json({ message: 'Caché limpiada' });
+// Endpoint de salud
+app.get('/health', (req, res) => {
+    res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // Iniciar servidor
