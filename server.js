@@ -54,7 +54,34 @@ const swaggerOptions = {
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
+// Redirigir la ruta raíz a /api-docs
+app.get('/', (req, res) => {
+    res.redirect(301, '/api-docs');
+});
+
 // Rutas de la API
+/**
+ * @swagger
+ * /years:
+ *   get:
+ *     summary: Obtiene todos los años disponibles
+ *     responses:
+ *       200:
+ *         description: Lista de años disponibles
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                     example: 1
+ *                   year:
+ *                     type: string
+ *                     example: "2024"
+ */
 app.get('/years', async (req, res) => {
     try {
         if (memoryCache.years) {
@@ -69,6 +96,31 @@ app.get('/years', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /players:
+ *   get:
+ *     summary: Obtiene todos los jugadores
+ *     responses:
+ *       200:
+ *         description: Lista de jugadores
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                     example: 1
+ *                   nickname:
+ *                     type: string
+ *                     example: "PlayerOne"
+ *                   years:
+ *                     type: string
+ *                     example: "2023,2024"
+ */
 app.get('/players', async (req, res) => {
     try {
         if (memoryCache.players) {
@@ -83,6 +135,38 @@ app.get('/players', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /players/year/{year}:
+ *   get:
+ *     summary: Obtiene jugadores por año
+ *     parameters:
+ *       - in: path
+ *         name: year
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: Año para filtrar
+ *     responses:
+ *       200:
+ *         description: Lista de jugadores para el año especificado
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: integer
+ *                     example: 1
+ *                   nickname:
+ *                     type: string
+ *                     example: "PlayerOne"
+ *                   years:
+ *                     type: string
+ *                     example: "2023,2024"
+ */
 app.get('/players/year/:year', async (req, res) => {
     const { year } = req.params;
     try {
@@ -98,6 +182,38 @@ app.get('/players/year/:year', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /players/{identifier}:
+ *   get:
+ *     summary: Obtiene un jugador por ID o nickname
+ *     parameters:
+ *       - in: path
+ *         name: identifier
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID o nickname del jugador
+ *     responses:
+ *       200:
+ *         description: Información del jugador
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 id:
+ *                   type: integer
+ *                   example: 1
+ *                 nickname:
+ *                   type: string
+ *                   example: "PlayerOne"
+ *                 years:
+ *                   type: string
+ *                   example: "2023,2024"
+ *       404:
+ *         description: Jugador no encontrado
+ */
 app.get('/players/:identifier', async (req, res) => {
     const { identifier } = req.params;
     try {
@@ -116,6 +232,23 @@ app.get('/players/:identifier', async (req, res) => {
     }
 });
 
+/**
+ * @swagger
+ * /cache/clear:
+ *   post:
+ *     summary: Limpia manualmente la caché
+ *     responses:
+ *       200:
+ *         description: Caché limpiada exitosamente
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 message:
+ *                   type: string
+ *                   example: "Caché limpiada"
+ */
 app.post('/cache/clear', (req, res) => {
     memoryCache.years = null;
     memoryCache.players = null;
@@ -125,6 +258,27 @@ app.post('/cache/clear', (req, res) => {
 });
 
 // Endpoint de salud
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Verifica que el servidor esté funcionando
+ *     responses:
+ *       200:
+ *         description: Estado del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "ok"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-01-21T08:20:20.123Z"
+ */
 app.get('/health', (req, res) => {
     res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
