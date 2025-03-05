@@ -10,6 +10,9 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// URL de LOLPros para G2 Esports
+const LOLPROS_URL = 'https://lolpros.gg/team/g2-esports';
+
 // Configurar cliente Turso
 const db = createClient({
     url: process.env.TURSO_URL,
@@ -269,12 +272,9 @@ app.get('/ranking', async (req, res) => {
         return res.json(memoryCache.ranking);
     }
     try {
-        const browser = await chromium.launch({
-            headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
+        const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
         const page = await browser.newPage();
-        await page.goto('https://lolpros.gg/team/g2-esports', { waitUntil: 'networkidle' });
+        await page.goto(LOLPROS_URL, { waitUntil: 'networkidle' });
 
         const playerData = await page.evaluate(() => {
             const players = Array.from(document.querySelectorAll('.team-members .player'));
