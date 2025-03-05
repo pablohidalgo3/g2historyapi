@@ -274,9 +274,11 @@ app.get('/ranking', async (req, res) => {
         }
 
         const browser = await playwright.chromium.launch({ headless: true });
-        const page = await browser.newPage();
-        await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
-        await page.goto("https://lolpros.gg/team/g2-esports", { waitUntil: "domcontentloaded", timeout: 60000 });
+        const context = await browser.newContext({
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+        });
+        const page = await context.newPage();
+        await page.goto("https://lolpros.gg/team/g2-esports");
 
         const rankingData = await page.evaluate(() => {
             const players = Array.from(document.querySelectorAll('.member'));
