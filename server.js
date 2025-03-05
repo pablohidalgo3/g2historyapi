@@ -269,7 +269,10 @@ app.get('/ranking', async (req, res) => {
         return res.json(memoryCache.ranking);
     }
     try {
-        const browser = await chromium.launch( { headless: true } );
+        const browser = await chromium.launch({
+            headless: true,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        });
         const page = await browser.newPage();
         await page.goto('https://lolpros.gg/team/g2-esports', { waitUntil: 'networkidle' });
 
