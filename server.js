@@ -3,7 +3,7 @@ const cors = require('cors');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
-const { chromium } = require('playwright');  // Añadido para scraping dinámico
+const playwright = require('playwright');
 const { createClient } = require('@libsql/client');
 require('dotenv').config();
 
@@ -267,35 +267,37 @@ app.post('/cache/clear', (req, res) => {
 
 // Endpoint para el ranking de SoloQ con Playwright
 app.get('/ranking', async (req, res) => {
-    const now = Date.now();
-    if (memoryCache.ranking && (now - lastRankingUpdate < RANKING_CACHE_DURATION)) {
-        return res.json(memoryCache.ranking);
-    }
     try {
-        const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
-        const page = await browser.newPage();
-        await page.goto(LOLPROS_URL);
+        if (memoryCache.ranking) {
+            console.log("Usando caché para el ranking");
+            return res.json(memoryCache.ranking);
+        }
 
-        const playerData = await page.evaluate(() => {
+        const browser = await playwright.chromium.launch({ headless: true });
+        const page = await browser.newPage();
+        await page.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3");
+        await page.goto("https://lolpros.gg/team/g2-esports", { waitUntil: "domcontentloaded", timeout: 60000 });
+
+        const rankingData = await page.evaluate(() => {
             const players = Array.from(document.querySelectorAll('.member'));
             return players.map(player => {
-                const nickname = player.querySelector('.name')?.innerText.trim() || 'Desconocido';
-                const tier = player.querySelector('.rank-long .rank-icon')?.getAttribute('title') || 'Unranked';
-                const lpText = player.querySelector('.rank-long')?.innerText.trim() || '0 LP';
-                const lp = parseInt(lpText.replace(/[^0-9]/g, '')) || 0;
-                return { nickname, tier, lp };
+                const nickname = player.querySelector('.name')?.textContent.trim() || "";
+                const tierElement = player.querySelector('.rank-long');
+                const [tier, lp] = tierElement ? tierElement.textContent.trim().split(/\s+/).slice(0, 2) : ["", "0"];
+                return {
+                    nickname,
+                    tier,
+                    lp: parseInt(lp, 10) || 0
+                };
             });
         });
 
         await browser.close();
-
-        const sortedPlayers = playerData.sort((a, b) => b.lp - a.lp).slice(0, 5);
-        memoryCache.ranking = sortedPlayers;
-        lastRankingUpdate = now;
-        res.json(sortedPlayers);
+        memoryCache.ranking = rankingData;
+        res.json(rankingData);
     } catch (error) {
-        console.error('Error al obtener el ranking:', error.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        console.error("Error al obtener el ranking:", error.message);
+        res.status(500).json({ error: "Error interno del servidor" });
     }
 });
 
