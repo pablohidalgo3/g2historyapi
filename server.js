@@ -3,8 +3,7 @@ const cors = require('cors');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
-const axios = require('axios');  // Añadido para solicitudes HTTP
-const cheerio = require('cheerio');  // Añadido para scraping
+const { chromium } = require('playwright');  // Añadido para scraping dinámico
 const { createClient } = require('@libsql/client');
 require('dotenv').config();
 
@@ -263,30 +262,29 @@ app.post('/cache/clear', (req, res) => {
     res.json({ message: 'Caché limpiada' });
 });
 
-// Endpoint para el ranking de SoloQ con scraping a LOLPros
+// Endpoint para el ranking de SoloQ con Playwright
 app.get('/ranking', async (req, res) => {
     const now = Date.now();
     if (memoryCache.ranking && (now - lastRankingUpdate < RANKING_CACHE_DURATION)) {
         return res.json(memoryCache.ranking);
     }
     try {
-        const url = 'https://lolpros.gg/team/g2-esports';
-        const response = await axios.get(url);
-        const $ = cheerio.load(response.data);
+        const browser = await chromium.launch( { headless: true } );
+        const page = await browser.newPage();
+        await page.goto('https://lolpros.gg/team/g2-esports', { waitUntil: 'networkidle' });
 
-        const playerData = [];
-        $('.team-members .player').each((i, el) => {
-            const nickname = $(el).find('.player-name').text().trim();
-            const tier = $(el).find('.tier').text().trim() || 'Unranked';
-            const lpText = $(el).find('.lp').text().trim();
-            const lp = parseInt(lpText.replace(/[^0-9]/g, '')) || 0;
-
-            playerData.push({
-                nickname,
-                tier,
-                lp
+        const playerData = await page.evaluate(() => {
+            const players = Array.from(document.querySelectorAll('.team-members .player'));
+            return players.map(player => {
+                const nickname = player.querySelector('.player-name')?.innerText.trim() || 'Desconocido';
+                const tier = player.querySelector('.tier')?.innerText.trim() || 'Unranked';
+                const lpText = player.querySelector('.lp')?.innerText.trim() || '0 LP';
+                const lp = parseInt(lpText.replace(/[^0-9]/g, '')) || 0;
+                return { nickname, tier, lp };
             });
         });
+
+        await browser.close();
 
         const sortedPlayers = playerData.sort((a, b) => b.lp - a.lp);
         memoryCache.ranking = sortedPlayers;
