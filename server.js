@@ -295,8 +295,9 @@ app.get('/ranking', async (req, res) => {
         });
 
         await browser.close();
-        memoryCache.ranking = rankingData;
-        res.json(rankingData);
+        const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
+        memoryCache.ranking = sortedRankingData;
+        res.json(sortedRankingData);
     } catch (error) {
         console.error("Error al obtener el ranking:", error.message);
         res.status(500).json({ error: "Error interno del servidor" });
