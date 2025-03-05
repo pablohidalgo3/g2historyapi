@@ -3,6 +3,8 @@ const cors = require('cors');
 const compression = require('compression');
 const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
+const axios = require('axios');  // Añadido para solicitudes HTTP
+const cheerio = require('cheerio');  // Añadido para scraping
 const { createClient } = require('@libsql/client');
 require('dotenv').config();
 
@@ -26,7 +28,11 @@ const memoryCache = {
     players: null,
     playersByYear: new Map(),
     playerByIdOrNickname: new Map(),
+    ranking: null,  // Caché para el ranking
 };
+
+let lastRankingUpdate = 0;
+const RANKING_CACHE_DURATION = 1000 * 60 * 60;  // 1 hora en milisegundos
 
 // Configuración de Swagger
 const swaggerOptions = {
@@ -255,6 +261,41 @@ app.post('/cache/clear', (req, res) => {
     memoryCache.playersByYear.clear();
     memoryCache.playerByIdOrNickname.clear();
     res.json({ message: 'Caché limpiada' });
+});
+
+// Endpoint para el ranking de SoloQ con scraping a LOLPros
+app.get('/ranking', async (req, res) => {
+    const now = Date.now();
+    if (memoryCache.ranking && (now - lastRankingUpdate < RANKING_CACHE_DURATION)) {
+        return res.json(memoryCache.ranking);
+    }
+    try {
+        const url = 'https://lolpros.gg/team/g2-esports';
+        const response = await axios.get(url);
+        const $ = cheerio.load(response.data);
+
+        const playerData = [];
+        $('.team-members .player').each((i, el) => {
+            const nickname = $(el).find('.player-name').text().trim();
+            const tier = $(el).find('.tier').text().trim() || 'Unranked';
+            const lpText = $(el).find('.lp').text().trim();
+            const lp = parseInt(lpText.replace(/[^0-9]/g, '')) || 0;
+
+            playerData.push({
+                nickname,
+                tier,
+                lp
+            });
+        });
+
+        const sortedPlayers = playerData.sort((a, b) => b.lp - a.lp);
+        memoryCache.ranking = sortedPlayers;
+        lastRankingUpdate = now;
+        res.json(sortedPlayers);
+    } catch (error) {
+        console.error('Error al obtener el ranking:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
+    }
 });
 
 // Endpoint de salud
