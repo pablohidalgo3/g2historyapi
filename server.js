@@ -277,11 +277,11 @@ app.get('/ranking', async (req, res) => {
         await page.goto(LOLPROS_URL);
 
         const playerData = await page.evaluate(() => {
-            const players = Array.from(document.querySelectorAll('.team-members .player'));
+            const players = Array.from(document.querySelectorAll('.member'));
             return players.map(player => {
-                const nickname = player.querySelector('.player-name')?.innerText.trim() || 'Desconocido';
-                const tier = player.querySelector('.tier')?.innerText.trim() || 'Unranked';
-                const lpText = player.querySelector('.lp')?.innerText.trim() || '0 LP';
+                const nickname = player.querySelector('.name')?.innerText.trim() || 'Desconocido';
+                const tier = player.querySelector('.rank-long .rank-icon')?.getAttribute('title') || 'Unranked';
+                const lpText = player.querySelector('.rank-long')?.innerText.trim() || '0 LP';
                 const lp = parseInt(lpText.replace(/[^0-9]/g, '')) || 0;
                 return { nickname, tier, lp };
             });
