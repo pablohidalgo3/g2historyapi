@@ -289,7 +289,7 @@ app.get('/ranking', async (req, res) => {
 
         await browser.close();
 
-        const sortedPlayers = playerData.sort((a, b) => b.lp - a.lp);
+        const sortedPlayers = playerData.sort((a, b) => b.lp - a.lp).slice(0, 5);
         memoryCache.ranking = sortedPlayers;
         lastRankingUpdate = now;
         res.json(sortedPlayers);
