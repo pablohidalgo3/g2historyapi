@@ -281,7 +281,7 @@ app.get('/ranking', async (req, res) => {
         await page.goto("https://lolpros.gg/team/g2-esports");
 
         const rankingData = await page.evaluate(() => {
-            const players = Array.from(document.querySelectorAll('.member'));
+            const players = Array.from(document.querySelectorAll('.member')).slice(0, 5);
             return players.map(player => {
                 const nickname = player.querySelector('.name')?.textContent.trim() || "";
                 const tierElement = player.querySelector('.rank-long');
