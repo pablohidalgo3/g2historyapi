@@ -274,7 +274,7 @@ app.get('/ranking', async (req, res) => {
     try {
         const browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
         const page = await browser.newPage();
-        await page.goto(LOLPROS_URL, { waitUntil: 'networkidle' });
+        await page.goto(LOLPROS_URL);
 
         const playerData = await page.evaluate(() => {
             const players = Array.from(document.querySelectorAll('.team-members .player'));
