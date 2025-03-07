@@ -281,15 +281,37 @@ app.get('/ranking', async (req, res) => {
         await page.goto("https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1");
 
         const rankingData = await page.evaluate(() => {
-            return Array.from(document.querySelectorAll('tr.css-rmp2x6')).slice(0, 5).map(row => {
-                const nickname = row.querySelector('.op-summoner-text.css-ao94tw')?.textContent.trim() || 'Unknown';
-                const tier = row.querySelector('td.css-13jn5d5')?.textContent.trim() || 'Unknown';
-                const lp = parseInt(row.querySelector('td.css-1oruqdu .op-summoner-text')?.textContent.replace(/[^0-9]/g, '') || '0');
-                const img = row.querySelector('img.op-summoner-profile')?.src || '/placeholder.svg';
-                const id = nickname.replace(/\s+/g, '-').toLowerCase();
-                return { id, nickname, tier, lp, img };
+            const targetNicknames = [
+                "G2 BrokenBlade",
+                "G2 SkewMond",
+                "G2 Caps",
+                "G2 Hans Sama",
+                "G2 Labrov"
+            ].map(name => name.toLowerCase());
+
+            const players = Array.from(document.querySelectorAll('tr.css-rmp2x6'))
+                .filter(row => {
+                    const nickname = row.querySelector('.css-ao94tw.e1swkqyq1')?.textContent.trim().toLowerCase() || 'unknown';
+                    return targetNicknames.includes(nickname);
+                });
+
+            return players.map(row => {
+                const rawNickname = row.querySelector('.css-ao94tw.e1swkqyq1')?.textContent.trim() || 'Unknown';
+                const nickname = rawNickname.replace(/^G2\s+/i, '');  // Eliminar "G2" del inicio
+                const tier = row.querySelector('td.css-13jn5d5.e13pegz83')?.textContent.trim().toLowerCase() || 'Unknown';
+                const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);  // Primera letra en mayúscula
+                const lp = parseInt(row.querySelector('td.css-1oruqdu.e13pegz84')?.textContent.replace(/[^0-9]/g, '') || '0');
+                const rank = row.querySelector('td.css-1gozr20.e13pegz81')?.textContent.trim() || 'Unknown';
+
+                return {
+                    nickname,
+                    tier: formattedTier,
+                    lp,
+                    rank
+                };
             });
         });
+        
 
         await browser.close();
         const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
