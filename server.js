@@ -30,11 +30,11 @@ const memoryCache = {
     players: null,
     playersByYear: new Map(),
     playerByIdOrNickname: new Map(),
-    ranking: null,
-    rankingTimestamp: null,  // Timestamp para controlar la expiración de la caché
+    ranking: null,  // Caché para el ranking
 };
 
-const CACHE_DURATION = 30 * 60 * 1000;  // 30 minutos en milisegundos
+let lastRankingUpdate = 0;
+const RANKING_CACHE_DURATION = 1000 * 60 * 60;  // 1 hora en milisegundos
 
 // Configuración de Swagger
 const swaggerOptions = {
@@ -265,19 +265,22 @@ app.post('/cache/clear', (req, res) => {
     res.json({ message: 'Caché limpiada' });
 });
 
-// Endpoint para obtener el ranking
+// Endpoint para el ranking de SoloQ con Playwright
 app.get('/ranking', async (req, res) => {
     try {
-        const now = Date.now();
-        if (memoryCache.ranking && memoryCache.rankingTimestamp && (now - memoryCache.rankingTimestamp < CACHE_DURATION)) {
+        if (memoryCache.ranking) {
+            console.log("Usando caché para el ranking");
             return res.json(memoryCache.ranking);
         }
 
-        const browser = await playwright.chromium.launch();
-        const page = await browser.newPage();
-        await page.goto('https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1', { waitUntil: 'domcontentloaded' });
+        const browser = await playwright.chromium.launch({ headless: true });
+        const context = await browser.newContext({
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+        });
+        const page = await context.newPage();
+        await page.goto("https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1");
 
-        const players = await page.evaluate(() => {
+        const rankingData = await page.evaluate(() => {
             return Array.from(document.querySelectorAll('tr.css-rmp2x6')).slice(0, 5).map(row => {
                 const nickname = row.querySelector('.op-summoner-text.css-ao94tw')?.textContent.trim() || 'Unknown';
                 const tier = row.querySelector('td.css-13jn5d5')?.textContent.trim() || 'Unknown';
@@ -289,13 +292,12 @@ app.get('/ranking', async (req, res) => {
         });
 
         await browser.close();
-
-        memoryCache.ranking = players;
-        memoryCache.rankingTimestamp = now;  // Actualizar timestamp
-        res.json(players);
+        const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
+        memoryCache.ranking = sortedRankingData;
+        res.json(sortedRankingData);
     } catch (error) {
-        console.error('Error al obtener el ranking:', error.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+        console.error("Error al obtener el ranking:", error.message);
+        res.status(500).json({ error: "Error interno del servidor" });
     }
 });
 
