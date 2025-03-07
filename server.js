@@ -332,14 +332,12 @@ app.get('/ranking', async (req, res) => {
                 const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);  // Primera letra en mayúscula
                 const lp = parseInt(row.querySelector('td.css-1oruqdu.e13pegz84')?.textContent.replace(/[^0-9]/g, '') || '0');
                 const rank = row.querySelector('td.css-1gozr20.e13pegz81')?.textContent.trim() || 'Unknown';
-                const img = row.querySelector('img.op-summoner-profile')?.src || '/placeholder.svg';
 
                 return {
                     nickname,
                     tier: formattedTier,
                     lp,
-                    rank,
-                    img
+                    rank
                 };
             });
         });
