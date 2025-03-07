@@ -265,42 +265,35 @@ app.post('/cache/clear', (req, res) => {
     res.json({ message: 'Caché limpiada' });
 });
 
-// Endpoint para el ranking de SoloQ con Playwright
+// Endpoint para obtener el ranking
 app.get('/ranking', async (req, res) => {
     try {
         if (memoryCache.ranking) {
-            console.log("Usando caché para el ranking");
             return res.json(memoryCache.ranking);
         }
 
-        const browser = await playwright.chromium.launch({ headless: true });
-        const context = await browser.newContext({
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
-        });
-        const page = await context.newPage();
-        await page.goto("https://lolpros.gg/team/g2-esports");
+        const browser = await playwright.chromium.launch();
+        const page = await browser.newPage();
+        await page.goto('https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1', { waitUntil: 'domcontentloaded' });
 
-        const rankingData = await page.evaluate(() => {
-            const players = Array.from(document.querySelectorAll('.member')).slice(0, 5);
-            return players.map(player => {
-                const nickname = player.querySelector('.name')?.textContent.trim() || "";
-                const tierElement = player.querySelector('.rank-long');
-                const [tier, lp] = tierElement ? tierElement.textContent.trim().split(/\s+/).slice(0, 2) : ["", "0"];
-                return {
-                    nickname,
-                    tier,
-                    lp: parseInt(lp, 10) || 0
-                };
+        const players = await page.evaluate(() => {
+            return Array.from(document.querySelectorAll('tr.css-rmp2x6')).slice(0, 5).map(row => {
+                const nickname = row.querySelector('.op-summoner-text.css-ao94tw')?.textContent.trim() || 'Unknown';
+                const tier = row.querySelector('td.css-13jn5d5')?.textContent.trim() || 'Unknown';
+                const lp = parseInt(row.querySelector('td.css-1oruqdu .op-summoner-text')?.textContent.replace(/[^0-9]/g, '') || '0');
+                const img = row.querySelector('img.op-summoner-profile')?.src || '/placeholder.svg';
+                const id = nickname.replace(/\s+/g, '-').toLowerCase();
+                return { id, nickname, tier, lp, img };
             });
         });
 
         await browser.close();
-        const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
-        memoryCache.ranking = sortedRankingData;
-        res.json(sortedRankingData);
+
+        memoryCache.ranking = players;
+        res.json(players);
     } catch (error) {
-        console.error("Error al obtener el ranking:", error.message);
-        res.status(500).json({ error: "Error interno del servidor" });
+        console.error('Error al obtener el ranking:', error.message);
+        res.status(500).json({ error: 'Error interno del servidor' });
     }
 });
 
