@@ -30,11 +30,11 @@ const memoryCache = {
     players: null,
     playersByYear: new Map(),
     playerByIdOrNickname: new Map(),
-    ranking: null,  // Caché para el ranking
+    ranking: null,
+    rankingTimestamp: null,  // Timestamp para controlar la expiración de la caché
 };
 
-let lastRankingUpdate = 0;
-const RANKING_CACHE_DURATION = 1000 * 60 * 60;  // 1 hora en milisegundos
+const CACHE_DURATION = 30 * 60 * 1000;  // 30 minutos en milisegundos
 
 // Configuración de Swagger
 const swaggerOptions = {
@@ -268,7 +268,8 @@ app.post('/cache/clear', (req, res) => {
 // Endpoint para obtener el ranking
 app.get('/ranking', async (req, res) => {
     try {
-        if (memoryCache.ranking) {
+        const now = Date.now();
+        if (memoryCache.ranking && memoryCache.rankingTimestamp && (now - memoryCache.rankingTimestamp < CACHE_DURATION)) {
             return res.json(memoryCache.ranking);
         }
 
@@ -290,6 +291,7 @@ app.get('/ranking', async (req, res) => {
         await browser.close();
 
         memoryCache.ranking = players;
+        memoryCache.rankingTimestamp = now;  // Actualizar timestamp
         res.json(players);
     } catch (error) {
         console.error('Error al obtener el ranking:', error.message);
