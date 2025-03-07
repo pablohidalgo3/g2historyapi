@@ -10,9 +10,6 @@ require('dotenv').config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// URL de LOLPros para G2 Esports
-const LOLPROS_URL = 'https://lolpros.gg/team/g2-esports';
-
 // Configurar cliente Turso
 const db = createClient({
     url: process.env.TURSO_URL,
@@ -31,10 +28,10 @@ const memoryCache = {
     playersByYear: new Map(),
     playerByIdOrNickname: new Map(),
     ranking: null,  // Caché para el ranking
+    rankingTimestamp: null,
 };
 
-let lastRankingUpdate = 0;
-const RANKING_CACHE_DURATION = 1000 * 60 * 60;  // 1 hora en milisegundos
+const CACHE_DURATION = 30 * 60 * 1000;
 
 // Configuración de Swagger
 const swaggerOptions = {
@@ -265,10 +262,43 @@ app.post('/cache/clear', (req, res) => {
     res.json({ message: 'Caché limpiada' });
 });
 
-// Endpoint para el ranking de SoloQ con Playwright
+/**
+ * @swagger
+ * /ranking:
+ *   get:
+ *     summary: Obtiene el ranking de SoloQ para jugadores de G2 Esports
+ *     responses:
+ *       200:
+ *         description: Lista de jugadores con su posición en el ranking
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   nickname:
+ *                     type: string
+ *                     example: BrokenBlade
+ *                   tier:
+ *                     type: string
+ *                     example: Challenger
+ *                   lp:
+ *                     type: integer
+ *                     example: 2078
+ *                   rank:
+ *                     type: integer
+ *                     example: 1
+ *                   img:
+ *                     type: string
+ *                     example: "https://opgg-static.akamaized.net/meta/images/profile_icons/profileIcon3220.jpg"
+ *       500:
+ *         description: Error interno del servidor
+ */
 app.get('/ranking', async (req, res) => {
     try {
-        if (memoryCache.ranking) {
+        const now = Date.now();
+        if (memoryCache.ranking && memoryCache.rankingTimestamp && (now - memoryCache.rankingTimestamp < CACHE_DURATION)) {
             console.log("Usando caché para el ranking");
             return res.json(memoryCache.ranking);
         }
@@ -302,20 +332,22 @@ app.get('/ranking', async (req, res) => {
                 const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);  // Primera letra en mayúscula
                 const lp = parseInt(row.querySelector('td.css-1oruqdu.e13pegz84')?.textContent.replace(/[^0-9]/g, '') || '0');
                 const rank = row.querySelector('td.css-1gozr20.e13pegz81')?.textContent.trim() || 'Unknown';
+                const img = row.querySelector('img.op-summoner-profile')?.src || '/placeholder.svg';
 
                 return {
                     nickname,
                     tier: formattedTier,
                     lp,
-                    rank
+                    rank,
+                    img
                 };
             });
         });
-        
 
         await browser.close();
         const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
         memoryCache.ranking = sortedRankingData;
+        memoryCache.rankingTimestamp = now;  // Actualizar timestamp de la caché
         res.json(sortedRankingData);
     } catch (error) {
         console.error("Error al obtener el ranking:", error.message);
