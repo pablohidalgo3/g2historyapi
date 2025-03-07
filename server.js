@@ -262,43 +262,10 @@ app.post('/cache/clear', (req, res) => {
     res.json({ message: 'Caché limpiada' });
 });
 
-/**
- * @swagger
- * /ranking:
- *   get:
- *     summary: Obtiene el ranking de SoloQ para jugadores de G2 Esports
- *     responses:
- *       200:
- *         description: Lista de jugadores con su posición en el ranking
- *         content:
- *           application/json:
- *             schema:
- *               type: array
- *               items:
- *                 type: object
- *                 properties:
- *                   nickname:
- *                     type: string
- *                     example: BrokenBlade
- *                   tier:
- *                     type: string
- *                     example: Challenger
- *                   lp:
- *                     type: integer
- *                     example: 2078
- *                   rank:
- *                     type: integer
- *                     example: 1
- *                   img:
- *                     type: string
- *                     example: "https://opgg-static.akamaized.net/meta/images/profile_icons/profileIcon3220.jpg"
- *       500:
- *         description: Error interno del servidor
- */
+// Endpoint para el ranking de SoloQ con Playwright
 app.get('/ranking', async (req, res) => {
     try {
-        const now = Date.now();
-        if (memoryCache.ranking && memoryCache.rankingTimestamp && (now - memoryCache.rankingTimestamp < CACHE_DURATION)) {
+        if (memoryCache.ranking) {
             console.log("Usando caché para el ranking");
             return res.json(memoryCache.ranking);
         }
@@ -341,11 +308,11 @@ app.get('/ranking', async (req, res) => {
                 };
             });
         });
+        
 
         await browser.close();
         const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
         memoryCache.ranking = sortedRankingData;
-        memoryCache.rankingTimestamp = now;  // Actualizar timestamp de la caché
         res.json(sortedRankingData);
     } catch (error) {
         console.error("Error al obtener el ranking:", error.message);
