@@ -262,20 +262,67 @@ app.post('/cache/clear', (req, res) => {
     res.json({ message: 'Caché limpiada' });
 });
 
-// Endpoint para el ranking de SoloQ con Playwright
+/**
+ * @swagger
+ * /ranking:
+ *   get:
+ *     summary: Obtiene el ranking de SoloQ para jugadores de G2 Esports
+ *     responses:
+ *       200:
+ *         description: Lista de jugadores con su posición en el ranking
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   nickname:
+ *                     type: string
+ *                     example: BrokenBlade
+ *                   tier:
+ *                     type: string
+ *                     example: Challenger
+ *                   lp:
+ *                     type: integer
+ *                     example: 2078
+ *                   rank:
+ *                     type: integer
+ *                     example: 1
+ *                   img:
+ *                     type: string
+ *                     example: "https://opgg-static.akamaized.net/meta/images/profile_icons/profileIcon3220.jpg"
+ *       500:
+ *         description: Error interno del servidor
+ */
 app.get('/ranking', async (req, res) => {
     try {
-        if (memoryCache.ranking) {
+        const now = Date.now();
+        if (memoryCache.ranking && memoryCache.rankingTimestamp && (now - memoryCache.rankingTimestamp < CACHE_DURATION)) {
             console.log("Usando caché para el ranking");
             return res.json(memoryCache.ranking);
         }
 
-        const browser = await playwright.chromium.launch({ headless: true });
-        const context = await browser.newContext({
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3"
+        const browser = await playwright.chromium.launch({
+            headless: true,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-accelerated-2d-canvas',
+                '--disable-gpu',
+                '--no-zygote',
+                '--single-process'
+            ]
         });
+
+        const context = await browser.newContext({
+            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+            viewport: { width: 1280, height: 720 }
+        });
+
         const page = await context.newPage();
-        await page.goto("https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1");
+        await page.goto("https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1", { waitUntil: 'domcontentloaded', timeout: 60000 });
 
         const rankingData = await page.evaluate(() => {
             const targetNicknames = [
@@ -308,17 +355,19 @@ app.get('/ranking', async (req, res) => {
                 };
             });
         });
-        
 
         await browser.close();
+
         const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
         memoryCache.ranking = sortedRankingData;
+        memoryCache.rankingTimestamp = now;  // Actualizar timestamp de la caché
         res.json(sortedRankingData);
     } catch (error) {
         console.error("Error al obtener el ranking:", error.message);
         res.status(500).json({ error: "Error interno del servidor" });
     }
 });
+
 
 // Endpoint de salud
 /**
