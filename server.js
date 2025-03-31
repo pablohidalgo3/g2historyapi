@@ -326,26 +326,34 @@ app.get('/ranking', async (req, res) => {
 
         const rankingData = await page.evaluate(() => {
             const targetNicknames = [
-                "G2 BrokenBlade",
-                "G2 SkewMond",
-                "G2 Caps",
-                "G2 Hans Sama",
-                "G2 Labrov"
-            ].map(name => name.toLowerCase());
+                "g2 brokenblade",
+                "g2 skewmond",
+                "g2 caps",
+                "g2 hans sama",
+                "g2 labrov"
+            ];
 
-            const players = Array.from(document.querySelectorAll('tr.css-rmp2x6'))
+            const players = Array.from(document.querySelectorAll('tr'))
                 .filter(row => {
-                    const nickname = row.querySelector('.css-ao94tw.e1swkqyq1')?.textContent.trim().toLowerCase() || 'unknown';
-                    return targetNicknames.includes(nickname);
+                    const nicknameContainer = row.querySelector('td:nth-child(2) .text-gray-900');
+                    if (!nicknameContainer) return false;
+
+                    const nicknameText = nicknameContainer.textContent.trim().toLowerCase();
+                    return targetNicknames.includes(nicknameText);
                 });
 
             return players.map(row => {
-                const rawNickname = row.querySelector('.css-ao94tw.e1swkqyq1')?.textContent.trim() || 'Unknown';
-                const nickname = rawNickname.replace(/^G2\s+/i, '');  // Eliminar "G2" del inicio
-                const tier = row.querySelector('td.css-13jn5d5.e13pegz83')?.textContent.trim().toLowerCase() || 'Unknown';
-                const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);  // Primera letra en mayúscula
-                const lp = parseInt(row.querySelector('td.css-1oruqdu.e13pegz84')?.textContent.replace(/[^0-9]/g, '') || '0');
-                const rank = row.querySelector('td.css-1gozr20.e13pegz81')?.textContent.trim() || 'Unknown';
+                const nicknameContainer = row.querySelector('td:nth-child(2) .text-gray-900');
+                const nicknameText = nicknameContainer ? nicknameContainer.textContent.trim() : 'Unknown';
+                const nickname = nicknameText.replace(/^G2\s+/i, '').trim();
+
+                const tier = row.querySelector('td:nth-child(3) div.hidden')?.textContent.trim() || 'Unknown';
+                const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+                const lpText = row.querySelector('td:nth-child(4) div')?.textContent.replace(/,/g, '').trim() || '0';
+                const lp = parseInt(lpText, 10);
+
+                const rank = row.querySelector('td:nth-child(1)')?.textContent.trim() || 'Unknown';
 
                 return {
                     nickname,
@@ -360,13 +368,14 @@ app.get('/ranking', async (req, res) => {
 
         const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
         memoryCache.ranking = sortedRankingData;
-        memoryCache.rankingTimestamp = now;  // Actualizar timestamp de la caché
+        memoryCache.rankingTimestamp = now;
         res.json(sortedRankingData);
     } catch (error) {
         console.error("Error al obtener el ranking:", error.message);
         res.status(500).json({ error: "Error interno del servidor" });
     }
 });
+
 
 
 // Endpoint de salud
