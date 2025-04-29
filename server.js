@@ -29,6 +29,8 @@ const memoryCache = {
     playerByIdOrNickname: new Map(),
     ranking: null,  // Caché para el ranking
     rankingTimestamp: null,
+    matches: null,            // Caché para próximos partidos
+    matchesTimestamp: null,   // Timestamp de la última petición
 };
 
 const CACHE_DURATION = 30 * 60 * 1000;
@@ -259,6 +261,8 @@ app.post('/cache/clear', (req, res) => {
     memoryCache.players = null;
     memoryCache.playersByYear.clear();
     memoryCache.playerByIdOrNickname.clear();
+    memoryCache.matches.clear();
+    memoryCache.matchesTimestamp.clear();
     res.json({ message: 'Caché limpiada' });
 });
 
@@ -378,7 +382,7 @@ app.get('/ranking', async (req, res) => {
 
 /**
  * @swagger
- * /matches:
+ * /matches/upcoming:
  *   get:
  *     summary: Obtiene los próximos partidos de G2 Esports desde Liquipedia
  *     responses:
@@ -393,87 +397,67 @@ app.get('/ranking', async (req, res) => {
  *                 properties:
  *                   opponent:
  *                     type: string
- *                     example: "Team Vitality"
  *                   date:
  *                     type: string
  *                     format: date-time
- *                     example: "2025-05-04T17:00:00.000Z"
  *                   rawDate:
  *                     type: string
- *                     example: "May 4, 2025 - 19:00 CEST"
  *                   tournament:
  *                     type: string
- *                     example: "LEC Spring 2025"
  *                   matchLink:
  *                     type: string
- *                     example: "/leagueoflegends/Match:ID_pMJRumBG63_0004"
  */
 app.get('/matches/upcoming', async (req, res) => {
     try {
       const now = Date.now();
-      // Si hay caché y no han pasado 30 minutos, la devolvemos
-      if (memoryCache.matches && memoryCache.matchesTimestamp && (now - memoryCache.matchesTimestamp < CACHE_DURATION)) {
+      if (memoryCache.matches && memoryCache.matchesTimestamp
+          && (now - memoryCache.matchesTimestamp < CACHE_DURATION)) {
         console.log("Usando caché para próximos partidos");
         return res.json(memoryCache.matches);
       }
   
-      // Lanzar navegador
-      const browser = await playwright.chromium.launch({
-        headless: true,
-        args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-accelerated-2d-canvas',
-          '--disable-gpu',
-          '--no-zygote',
-          '--single-process'
-        ]
-      });
-      const context = await browser.newContext({
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        viewport: { width: 1280, height: 720 }
-      });
-      const page = await context.newPage();
+      const browser = await playwright.chromium.launch({ headless: true, args: [/*...*/] });
+      const ctx     = await browser.newContext({ userAgent: "Mozilla/5.0", viewport: { width: 1280, height: 720 } });
+      const page    = await ctx.newPage();
       await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
         waitUntil: 'domcontentloaded',
         timeout: 60000
       });
   
-      // Extraer datos de todos los table.infobox_matches_content
       const matches = await page.$$eval('table.infobox_matches_content', tables =>
         tables.map(table => {
-          const nameLeft  = table.querySelector('td.team-left .team-template-text a')?.textContent.trim() || '';
-          const nameRight = table.querySelector('td.team-right .team-template-text a')?.textContent.trim() || '';
-          // Elegimos el rival distinto de "G2"
-          const opponent = nameLeft === 'G2' ? nameRight : nameLeft;
+          const nameLeft  = table.querySelector('td.team-left .team-template-text a')?.textContent.trim() ?? '';
+          const nameRight = table.querySelector('td.team-right .team-template-text a')?.textContent.trim() ?? '';
+          const opponent  = (nameLeft === 'G2' ? nameRight : nameLeft) || nameLeft || nameRight;
   
-          const tsElem   = table.querySelector('.timer-object-countdown-only');
-          const timestampSec = tsElem?.getAttribute('data-timestamp');
-          const isoDate = timestampSec
-            ? new Date(Number(timestampSec) * 1000).toISOString()
+          const tsElem       = table.querySelector('span.timer-object-countdown-only');
+          const timestampSec = tsElem?.dataset.timestamp;
+          const date         = timestampSec
+            ? new Date(parseInt(timestampSec, 10) * 1000).toISOString()
             : null;
   
-          const rawDate  = table.querySelector('.timer-object-date')?.textContent.trim() || '';
-          const tournament = table.querySelector('.tournament-text-flex a')?.textContent.trim() || '';
-          const matchLink  = table.querySelector('.has-matchpage a.btn-secondary')
-            ?.getAttribute('href') || '';
+          const rawDate    = table.querySelector('.timer-object-date')?.textContent.trim() ?? '';
+          const tournament = table.querySelector('.tournament-text-flex a')?.textContent.trim() ?? '';
   
-          return { opponent, date: isoDate, rawDate, tournament, matchLink };
+          const linkElem   = table.querySelector('.has-matchpage a[href*="/leagueoflegends/Match"]');
+          const matchLink  = linkElem?.getAttribute('href') ?? '';
+  
+          return { opponent, date, rawDate, tournament, matchLink };
         })
       );
   
       await browser.close();
   
-      // Guardar en caché y responder
       memoryCache.matches = matches;
       memoryCache.matchesTimestamp = Date.now();
       res.json(matches);
+  
     } catch (error) {
       console.error("Error al obtener próximos partidos:", error);
       res.status(500).json({ error: "Error interno del servidor" });
     }
   });
+  
   
 
 
