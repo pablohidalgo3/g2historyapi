@@ -416,13 +416,26 @@ app.get('/matches/upcoming', async (req, res) => {
         return res.json(memoryCache.matches);
       }
   
-      const browser = await playwright.chromium.launch({ headless: true, args: [/*...*/] });
-      const ctx     = await browser.newContext({ userAgent: "Mozilla/5.0", viewport: { width: 1280, height: 720 } });
-      const page    = await ctx.newPage();
-      await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
-        waitUntil: 'domcontentloaded',
-        timeout: 60000
-      });
+      const browser = await playwright.chromium.launch({
+        headless: true,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-accelerated-2d-canvas',
+            '--disable-gpu',
+            '--no-zygote',
+            '--single-process'
+        ]
+    });
+
+    const context = await browser.newContext({
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        viewport: { width: 1280, height: 720 }
+    });
+
+    const page = await context.newPage();
+    await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", { waitUntil: 'domcontentloaded', timeout: 60000 });
   
       const matches = await page.$$eval('table.infobox_matches_content', tables =>
         tables.map(table => {
