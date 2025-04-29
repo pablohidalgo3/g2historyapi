@@ -1,19 +1,19 @@
-const express = require('express');
-const cors = require('cors');
-const compression = require('compression');
-const swaggerUi = require('swagger-ui-express');
-const swaggerJsdoc = require('swagger-jsdoc');
-const playwright = require('playwright');
-const { createClient } = require('@libsql/client');
-require('dotenv').config();
+const express = require("express");
+const cors = require("cors");
+const compression = require("compression");
+const swaggerUi = require("swagger-ui-express");
+const swaggerJsdoc = require("swagger-jsdoc");
+const playwright = require("playwright");
+const { createClient } = require("@libsql/client");
+require("dotenv").config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Configurar cliente Turso
 const db = createClient({
-    url: process.env.TURSO_URL,
-    authToken: process.env.TURSO_AUTH,
+  url: process.env.TURSO_URL,
+  authToken: process.env.TURSO_AUTH,
 });
 
 // Middlewares
@@ -23,47 +23,48 @@ app.use(express.json());
 
 // Inicializar caché en memoria
 const memoryCache = {
-    years: null,
-    players: null,
-    playersByYear: new Map(),
-    playerByIdOrNickname: new Map(),
-    ranking: null,  // Caché para el ranking
-    rankingTimestamp: null,
-    matches: null,            // Caché para próximos partidos
-    matchesTimestamp: null,   // Timestamp de la última petición
+  years: null,
+  players: null,
+  playersByYear: new Map(),
+  playerByIdOrNickname: new Map(),
+  ranking: null, // Caché para el ranking
+  rankingTimestamp: null,
+  matches: null, // Caché para próximos partidos
+  matchesTimestamp: null, // Timestamp de la última petición
 };
 
 const CACHE_DURATION = 30 * 60 * 1000;
 
 // Configuración de Swagger
 const swaggerOptions = {
-    definition: {
-        openapi: '3.0.0',
-        info: {
-            title: 'G2 Esports Players API',
-            version: '1.0.0',
-            description: 'API para gestionar los datos de jugadores y años de G2 Esports',
-        },
-        servers: [
-            {
-                url: `http://localhost:${PORT}`,
-                description: 'Servidor local',
-            },
-            {
-                url: 'https://g2historyapi-production.up.railway.app/', // Reemplaza <tu-api> con el subdominio asignado por Railway
-                description: 'Servidor de producción (Railway)',
-            },
-        ],
+  definition: {
+    openapi: "3.0.0",
+    info: {
+      title: "G2 Esports Players API",
+      version: "1.0.0",
+      description:
+        "API para gestionar los datos de jugadores y años de G2 Esports",
     },
-    apis: ['./server.js'],
+    servers: [
+      {
+        url: `http://localhost:${PORT}`,
+        description: "Servidor local",
+      },
+      {
+        url: "https://g2historyapi-production.up.railway.app/", // Reemplaza <tu-api> con el subdominio asignado por Railway
+        description: "Servidor de producción (Railway)",
+      },
+    ],
+  },
+  apis: ["./server.js"],
 };
 
 const swaggerDocs = swaggerJsdoc(swaggerOptions);
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerDocs));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 
 // Redirigir la ruta raíz a /api-docs
-app.get('/', (req, res) => {
-    res.redirect(301, '/api-docs');
+app.get("/", (req, res) => {
+  res.redirect(301, "/api-docs");
 });
 
 // Rutas de la API
@@ -89,18 +90,18 @@ app.get('/', (req, res) => {
  *                     type: string
  *                     example: "2024"
  */
-app.get('/years', async (req, res) => {
-    try {
-        if (memoryCache.years) {
-            return res.json(memoryCache.years);
-        }
-        const result = await db.execute('SELECT * FROM years');
-        memoryCache.years = result.rows; // Guardar en caché
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error al obtener los años:', error.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+app.get("/years", async (req, res) => {
+  try {
+    if (memoryCache.years) {
+      return res.json(memoryCache.years);
     }
+    const result = await db.execute("SELECT * FROM years");
+    memoryCache.years = result.rows; // Guardar en caché
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error al obtener los años:", error.message);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
 });
 
 /**
@@ -128,18 +129,18 @@ app.get('/years', async (req, res) => {
  *                     type: string
  *                     example: "2023,2024"
  */
-app.get('/players', async (req, res) => {
-    try {
-        if (memoryCache.players) {
-            return res.json(memoryCache.players);
-        }
-        const result = await db.execute('SELECT * FROM players');
-        memoryCache.players = result.rows; // Guardar en caché
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error al obtener jugadores:', error.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+app.get("/players", async (req, res) => {
+  try {
+    if (memoryCache.players) {
+      return res.json(memoryCache.players);
     }
+    const result = await db.execute("SELECT * FROM players");
+    memoryCache.players = result.rows; // Guardar en caché
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error al obtener jugadores:", error.message);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
 });
 
 /**
@@ -174,19 +175,22 @@ app.get('/players', async (req, res) => {
  *                     type: string
  *                     example: "2023,2024"
  */
-app.get('/players/year/:year', async (req, res) => {
-    const { year } = req.params;
-    try {
-        if (memoryCache.playersByYear.has(year)) {
-            return res.json(memoryCache.playersByYear.get(year));
-        }
-        const result = await db.execute('SELECT * FROM players WHERE years LIKE ?', [`%${year}%`]);
-        memoryCache.playersByYear.set(year, result.rows); // Guardar en caché
-        res.json(result.rows);
-    } catch (error) {
-        console.error('Error al obtener jugadores por año:', error.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+app.get("/players/year/:year", async (req, res) => {
+  const { year } = req.params;
+  try {
+    if (memoryCache.playersByYear.has(year)) {
+      return res.json(memoryCache.playersByYear.get(year));
     }
+    const result = await db.execute(
+      "SELECT * FROM players WHERE years LIKE ?",
+      [`%${year}%`]
+    );
+    memoryCache.playersByYear.set(year, result.rows); // Guardar en caché
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error al obtener jugadores por año:", error.message);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
 });
 
 /**
@@ -221,22 +225,25 @@ app.get('/players/year/:year', async (req, res) => {
  *       404:
  *         description: Jugador no encontrado
  */
-app.get('/players/:identifier', async (req, res) => {
-    const { identifier } = req.params;
-    try {
-        if (memoryCache.playerByIdOrNickname.has(identifier)) {
-            return res.json(memoryCache.playerByIdOrNickname.get(identifier));
-        }
-        const result = await db.execute('SELECT * FROM players WHERE id = ? OR nickname = ?', [identifier, identifier]);
-        if (result.rows.length === 0) {
-            return res.status(404).json({ error: 'Jugador no encontrado' });
-        }
-        memoryCache.playerByIdOrNickname.set(identifier, result.rows[0]); // Guardar en caché
-        res.json(result.rows[0]);
-    } catch (error) {
-        console.error('Error al obtener jugador:', error.message);
-        res.status(500).json({ error: 'Error interno del servidor' });
+app.get("/players/:identifier", async (req, res) => {
+  const { identifier } = req.params;
+  try {
+    if (memoryCache.playerByIdOrNickname.has(identifier)) {
+      return res.json(memoryCache.playerByIdOrNickname.get(identifier));
     }
+    const result = await db.execute(
+      "SELECT * FROM players WHERE id = ? OR nickname = ?",
+      [identifier, identifier]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Jugador no encontrado" });
+    }
+    memoryCache.playerByIdOrNickname.set(identifier, result.rows[0]); // Guardar en caché
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error("Error al obtener jugador:", error.message);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
 });
 
 /**
@@ -256,14 +263,14 @@ app.get('/players/:identifier', async (req, res) => {
  *                   type: string
  *                   example: "Caché limpiada"
  */
-app.post('/cache/clear', (req, res) => {
-    memoryCache.years = null;
-    memoryCache.players = null;
-    memoryCache.playersByYear.clear();
-    memoryCache.playerByIdOrNickname.clear();
-    memoryCache.matches.clear();
-    memoryCache.matchesTimestamp.clear();
-    res.json({ message: 'Caché limpiada' });
+app.post("/cache/clear", (req, res) => {
+  memoryCache.years = null;
+  memoryCache.players = null;
+  memoryCache.playersByYear.clear();
+  memoryCache.playerByIdOrNickname.clear();
+  memoryCache.matches.clear();
+  memoryCache.matchesTimestamp.clear();
+  res.json({ message: "Caché limpiada" });
 });
 
 /**
@@ -299,85 +306,109 @@ app.post('/cache/clear', (req, res) => {
  *       500:
  *         description: Error interno del servidor
  */
-app.get('/ranking', async (req, res) => {
-    try {
-        const now = Date.now();
-        if (memoryCache.ranking && memoryCache.rankingTimestamp && (now - memoryCache.rankingTimestamp < CACHE_DURATION)) {
-            console.log("Usando caché para el ranking");
-            return res.json(memoryCache.ranking);
-        }
-
-        const browser = await playwright.chromium.launch({
-            headless: true,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--disable-accelerated-2d-canvas',
-                '--disable-gpu',
-                '--no-zygote',
-                '--single-process'
-            ]
-        });
-
-        const context = await browser.newContext({
-            userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-            viewport: { width: 1280, height: 720 }
-        });
-
-        const page = await context.newPage();
-        await page.goto("https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1", { waitUntil: 'domcontentloaded', timeout: 60000 });
-
-        const rankingData = await page.evaluate(() => {
-            const targetNicknames = [
-                "g2 brokenblade",
-                "g2 skewmond",
-                "g2 caps",
-                "g2 hans sama",
-                "g2 labrov"
-            ];
-
-            const players = Array.from(document.querySelectorAll('tr'))
-                .filter(row => {
-                    const nicknameContainer = row.querySelector('td:nth-child(2) .text-gray-900');
-                    if (!nicknameContainer) return false;
-
-                    const nicknameText = nicknameContainer.textContent.trim().toLowerCase();
-                    return targetNicknames.includes(nicknameText);
-                });
-
-            return players.map(row => {
-                const nicknameContainer = row.querySelector('td:nth-child(2) .text-gray-900');
-                const nicknameText = nicknameContainer ? nicknameContainer.textContent.trim() : 'Unknown';
-                const nickname = nicknameText.replace(/^G2\s+/i, '').trim();
-
-                const tier = row.querySelector('td:nth-child(3) div.hidden')?.textContent.trim() || 'Unknown';
-                const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);
-
-                const lpText = row.querySelector('td:nth-child(4) div')?.textContent.replace(/,/g, '').trim() || '0';
-                const lp = parseInt(lpText, 10);
-
-                const rank = row.querySelector('td:nth-child(1)')?.textContent.trim() || 'Unknown';
-
-                return {
-                    nickname,
-                    tier: formattedTier,
-                    lp,
-                    rank
-                };
-            });
-        });
-
-        await browser.close();
-
-        const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
-        memoryCache.ranking = sortedRankingData;
-        memoryCache.rankingTimestamp = now;
-        res.json(sortedRankingData);
-    } catch (error) {
-        console.error("Error al obtener el ranking:", error.message);
-        res.status(500).json({ error: "Error interno del servidor" });
+app.get("/ranking", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (
+      memoryCache.ranking &&
+      memoryCache.rankingTimestamp &&
+      now - memoryCache.rankingTimestamp < CACHE_DURATION
+    ) {
+      console.log("Usando caché para el ranking");
+      return res.json(memoryCache.ranking);
     }
+
+    const browser = await playwright.chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",
+      ],
+    });
+
+    const context = await browser.newContext({
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+      viewport: { width: 1280, height: 720 },
+    });
+
+    const page = await context.newPage();
+    await page.goto(
+      "https://www.op.gg/leaderboards/tier?region=euw&type=ladder&page=1",
+      { waitUntil: "domcontentloaded", timeout: 60000 }
+    );
+
+    const rankingData = await page.evaluate(() => {
+      const targetNicknames = [
+        "g2 brokenblade",
+        "g2 skewmond",
+        "g2 caps",
+        "g2 hans sama",
+        "g2 labrov",
+      ];
+
+      const players = Array.from(document.querySelectorAll("tr")).filter(
+        (row) => {
+          const nicknameContainer = row.querySelector(
+            "td:nth-child(2) .text-gray-900"
+          );
+          if (!nicknameContainer) return false;
+
+          const nicknameText = nicknameContainer.textContent
+            .trim()
+            .toLowerCase();
+          return targetNicknames.includes(nicknameText);
+        }
+      );
+
+      return players.map((row) => {
+        const nicknameContainer = row.querySelector(
+          "td:nth-child(2) .text-gray-900"
+        );
+        const nicknameText = nicknameContainer
+          ? nicknameContainer.textContent.trim()
+          : "Unknown";
+        const nickname = nicknameText.replace(/^G2\s+/i, "").trim();
+
+        const tier =
+          row.querySelector("td:nth-child(3) div.hidden")?.textContent.trim() ||
+          "Unknown";
+        const formattedTier = tier.charAt(0).toUpperCase() + tier.slice(1);
+
+        const lpText =
+          row
+            .querySelector("td:nth-child(4) div")
+            ?.textContent.replace(/,/g, "")
+            .trim() || "0";
+        const lp = parseInt(lpText, 10);
+
+        const rank =
+          row.querySelector("td:nth-child(1)")?.textContent.trim() || "Unknown";
+
+        return {
+          nickname,
+          tier: formattedTier,
+          lp,
+          rank,
+        };
+      });
+    });
+
+    await browser.close();
+
+    const sortedRankingData = rankingData.sort((a, b) => b.lp - a.lp);
+    memoryCache.ranking = sortedRankingData;
+    memoryCache.rankingTimestamp = now;
+    res.json(sortedRankingData);
+  } catch (error) {
+    console.error("Error al obtener el ranking:", error.message);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
 });
 
 /**
@@ -407,73 +438,103 @@ app.get('/ranking', async (req, res) => {
  *                   matchLink:
  *                     type: string
  */
-app.get('/matches/upcoming', async (req, res) => {
-    try {
-      const now = Date.now();
-      if (memoryCache.matches && memoryCache.matchesTimestamp
-          && (now - memoryCache.matchesTimestamp < CACHE_DURATION)) {
-        console.log("Usando caché para próximos partidos");
-        return res.json(memoryCache.matches);
-      }
-  
-      const browser = await playwright.chromium.launch({
-        headless: true,
-        args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-accelerated-2d-canvas',
-            '--disable-gpu',
-            '--no-zygote',
-            '--single-process'
-        ]
+app.get("/matches/upcoming", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (
+      memoryCache.matches &&
+      memoryCache.matchesTimestamp &&
+      now - memoryCache.matchesTimestamp < CACHE_DURATION
+    ) {
+      console.log("Usando caché para próximos partidos");
+      return res.json(memoryCache.matches);
+    }
+
+    const browser = await playwright.chromium.launch({
+      headless: true,
+      args: [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-accelerated-2d-canvas",
+        "--disable-gpu",
+        "--no-zygote",
+        "--single-process",
+      ],
     });
 
     const context = await browser.newContext({
-        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-        viewport: { width: 1280, height: 720 }
+      userAgent:
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+      viewport: { width: 1280, height: 720 },
     });
 
     const page = await context.newPage();
-    await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", { waitUntil: 'domcontentloaded', timeout: 60000 });
-  
-      const matches = await page.$$eval('table.infobox_matches_content', tables =>
-        tables.map(table => {
-          const nameLeft  = table.querySelector('td.team-left .team-template-text a')?.textContent.trim() ?? '';
-          const nameRight = table.querySelector('td.team-right .team-template-text a')?.textContent.trim() ?? '';
-          const opponent  = (nameLeft === 'G2' ? nameRight : nameLeft) || nameLeft || nameRight;
-  
-          const tsElem       = table.querySelector('span.timer-object-countdown-only');
+
+    // 1. Loguear todas las respuestas para ver si hay redirecciones o errores
+    page.on("response", (response) => {
+      console.log(`→ ${response.status()} ${response.url()}`);
+    });
+
+    await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
+      waitUntil: "domcontentloaded",
+      timeout: 60000,
+    });
+
+    // 2. Esperar explícitamente a que las tablas estén en el DOM
+    await page.waitForSelector("table.infobox_matches_content", {
+      timeout: 60000,
+    });
+
+    const matches = await page.$$eval(
+      "table.infobox_matches_content",
+      (tables) =>
+        tables.map((table) => {
+          const nameLeft =
+            table
+              .querySelector("td.team-left .team-template-text a")
+              ?.textContent.trim() ?? "";
+          const nameRight =
+            table
+              .querySelector("td.team-right .team-template-text a")
+              ?.textContent.trim() ?? "";
+          const opponent =
+            (nameLeft === "G2" ? nameRight : nameLeft) || nameLeft || nameRight;
+
+          const tsElem = table.querySelector(
+            "span.timer-object-countdown-only"
+          );
           const timestampSec = tsElem?.dataset.timestamp;
-          const date         = timestampSec
+          const date = timestampSec
             ? new Date(parseInt(timestampSec, 10) * 1000).toISOString()
             : null;
-  
-          const rawDate    = table.querySelector('.timer-object-date')?.textContent.trim() ?? '';
-          const tournament = table.querySelector('.tournament-text-flex a')?.textContent.trim() ?? '';
-  
-          const linkElem   = table.querySelector('.has-matchpage a[href*="/leagueoflegends/Match"]');
-          const matchLink  = linkElem?.getAttribute('href') ?? '';
-  
+
+          const rawDate =
+            table.querySelector(".timer-object-date")?.textContent.trim() ?? "";
+          const tournament =
+            table
+              .querySelector(".tournament-text-flex a")
+              ?.textContent.trim() ?? "";
+
+          const linkElem = table.querySelector(
+            '.has-matchpage a[href*="/leagueoflegends/Match"]'
+          );
+          const matchLink = linkElem?.getAttribute("href") ?? "";
+
           return { opponent, date, rawDate, tournament, matchLink };
         })
-      );
-  
-      await browser.close();
-  
-      memoryCache.matches = matches;
-      memoryCache.matchesTimestamp = Date.now();
-      res.json(matches);
-  
-    } catch (error) {
-      console.error("Error al obtener próximos partidos:", error);
-      res.status(500).json({ error: "Error interno del servidor" });
-    }
-  });
-  
-  
+    );
 
+    await browser.close();
 
+    memoryCache.matches = matches;
+    memoryCache.matchesTimestamp = Date.now();
+    res.json(matches);
+  } catch (error) {
+    console.error("Error al obtener próximos partidos:", error);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
 
 // Endpoint de salud
 /**
@@ -497,12 +558,12 @@ app.get('/matches/upcoming', async (req, res) => {
  *                   format: date-time
  *                   example: "2025-01-21T08:20:20.123Z"
  */
-app.get('/health', (req, res) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Iniciar servidor
 app.listen(PORT, () => {
-    console.log(`Servidor corriendo en http://localhost:${PORT}`);
-    console.log(`Documentación disponible en http://localhost:${PORT}/api-docs`);
+  console.log(`Servidor corriendo en http://localhost:${PORT}`);
+  console.log(`Documentación disponible en http://localhost:${PORT}/api-docs`);
 });
