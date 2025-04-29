@@ -462,26 +462,32 @@ app.get("/matches/upcoming", async (req, res) => {
         "--single-process",
       ],
     });
-
     const context = await browser.newContext({
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
       viewport: { width: 1280, height: 720 },
     });
 
-    const page = await context.newPage();
+    // ─────────────────────────────────────────────
+    // 1) Forzamos Accept-Language como un navegador real
+    await context.setExtraHTTPHeaders({
+      "Accept-Language": "en-US,en;q=0.9",
+    });
 
-    // 1. Loguear todas las respuestas para ver si hay redirecciones o errores
+    const page = await context.newPage();
     page.on("response", (response) => {
       console.log(`→ ${response.status()} ${response.url()}`);
     });
 
-    await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
+    // 2) Usamos la versión renderizada (evita JS cliente y suele devolver 200)
+    const LIQUI_URL =
+      "https://liquipedia.net/leagueoflegends/G2_Esports?action=render";
+    await page.goto(LIQUI_URL, {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
 
-    // 2. Esperar explícitamente a que las tablas estén en el DOM
+    // 3) Ahora sí esperamos a la tabla
     await page.waitForSelector("table.infobox_matches_content", {
       timeout: 60000,
     });
