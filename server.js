@@ -441,6 +441,18 @@ app.get("/ranking", async (req, res) => {
 app.get("/matches/upcoming", async (req, res) => {
   let browser;
   try {
+
+    const now = Date.now();
+    if (
+      memoryCache.matches &&
+      memoryCache.matchesTimestamp &&
+      now - memoryCache.matchesTimestamp < CACHE_DURATION
+    ) {
+      console.log("Usando caché para los partidos");
+      return res.json(memoryCache.matches);
+    }
+
+
     browser = await playwright.chromium.launch({ /* tus args */ });
     const page = await (await browser.newContext({ /* UA, viewport */ })).newPage();
 
@@ -515,7 +527,8 @@ app.get("/matches/upcoming", async (req, res) => {
     });
     
     
-
+    memoryCache.matches = matches;
+    memoryCache.matchesTimestamp = now;
     res.json(matches);
   } catch (err) {
     console.error("Scrape error:", err);
