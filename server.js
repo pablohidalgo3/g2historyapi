@@ -450,30 +450,52 @@ app.get("/matches/upcoming", async (req, res) => {
     });
 
     const matches = await page.evaluate(() => {
-      const tables = document.querySelectorAll("table.wikitable.infobox_matches_content");
-      const out = [];
-
+      // 1. Busca el panel “Upcoming Matches” y, dentro de él, sólo las tablas bien formadas
+      const header = Array.from(document.querySelectorAll(".infobox-header"))
+        .find(el => el.textContent.trim() === "Upcoming Matches");
+      const panel = header?.closest("div.fo-nttax-infobox.panel");
+      if (!panel) return [];
+    
+      const rawTables = Array.from(
+        panel.querySelectorAll("table.wikitable.infobox_matches_content")
+      );
+      // Filtramos sólo las tablas que tengan al menos ambos <td>
+      const tables = rawTables.filter(tbl =>
+        tbl.querySelector("td.team-left") &&
+        tbl.querySelector("td.team-right")
+      );
+    
+      // 2. Función segura que nunca reciba `null`
       function extractTeam(cell) {
-        const name = cell.querySelector(".team-template-text a")?.textContent.trim() || null;
-        const img = cell.querySelector("img");
-        const logo = img
-          ? new URL(img.getAttribute("src"), location.origin).href
+        if (!cell) return { name: null, logo: null };
+        const nameEl = cell.querySelector(".team-template-text a");
+        const name = nameEl?.textContent.trim() || null;
+        const imgEl  = cell.querySelector("img");
+        const logo   = imgEl
+          ? new URL(imgEl.getAttribute("src"), location.origin).href
           : null;
         return { name, logo };
       }
-
-      tables.forEach(table => {
+    
+      const out = [];
+      for (const table of tables) {
         const left  = extractTeam(table.querySelector("td.team-left"));
         const right = extractTeam(table.querySelector("td.team-right"));
+    
         const bo    = table.querySelector(".versus-lower abbr")?.textContent.trim() || null;
         const date  = table.querySelector(".timer-object-date")?.textContent.trim() || null;
+    
         const twitch  = table.querySelector('a[title*="twitch"]')?.href || null;
         const youtube = table.querySelector('a[title*="youtube"]')?.href || null;
-        const tourEl  = table.querySelector(".tournament-text-flex a");
+    
+        const tourEl = table.querySelector(".tournament-text-flex a");
         const tournament = tourEl
-          ? { name: tourEl.textContent.trim(), url: new URL(tourEl.href, location.origin).href }
+          ? {
+              name: tourEl.textContent.trim(),
+              url:  new URL(tourEl.getAttribute("href"), location.origin).href
+            }
           : { name: null, url: null };
-
+    
         out.push({
           team1:      left.name,
           team1Logo:  left.logo,
@@ -484,10 +506,11 @@ app.get("/matches/upcoming", async (req, res) => {
           streams:   { twitch, youtube },
           tournament
         });
-      });
-
+      }
+    
       return out;
     });
+    
 
     res.json(matches);
   } catch (err) {
