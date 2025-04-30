@@ -465,10 +465,77 @@ app.get("/matches/upcoming", async (req, res) => {
       timeout: 60000,
     });
 
-    const matches = await page.evaluate(() => {
-      const prueba = "OK";
-
-      return prueba;
+    const matches = await page.evaluate(async () => {
+      const tables = document.querySelectorAll("table.infobox_matches_content");
+      const matchData = [];
+    
+      async function extractTeam(cell) {
+        const nameEl = cell.querySelector(".team-template-text a");
+        const name = nameEl ? nameEl.textContent.trim() : null;
+    
+        const imgEl = cell.querySelector("img");
+        let logo = null;
+        if (imgEl) {
+          const src = new URL(imgEl.getAttribute("src"), location.origin).href;
+          try {
+            const response = await fetch(src);
+            const blob = await response.blob();
+            logo = await new Promise(resolve => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result);
+              reader.readAsDataURL(blob);
+            });
+          } catch (err) {
+            console.error("Error cargando logo:", err);
+          }
+        }
+    
+        return { name, logo };
+      }
+    
+      for (const table of tables) {
+        // Equipos
+        const leftCell  = table.querySelector("td.team-left");
+        const rightCell = table.querySelector("td.team-right");
+        const left  = await extractTeam(leftCell);
+        const right = await extractTeam(rightCell);
+    
+        // Best-of (ej. "Bo3")
+        const abbr = table.querySelector(".versus-lower abbr");
+        const bo = abbr ? abbr.textContent.trim() : null;
+    
+        // Fecha
+        const dateEl = table.querySelector(".timer-object-date");
+        const date   = dateEl ? dateEl.textContent.trim() : null;
+    
+        // Streams
+        const twitchA  = table.querySelector('a[title*="twitch"]');
+        const youtubeA = table.querySelector('a[title*="youtube"]');
+        const twitch   = twitchA  ? new URL(twitchA.href, location.origin).href : null;
+        const youtube  = youtubeA ? new URL(youtubeA.href, location.origin).href : null;
+    
+        // Torneo
+        const tourEl   = table.querySelector(".tournament-text-flex a");
+        const tournament = tourEl
+          ? {
+              name: tourEl.textContent.trim(),
+              url:  new URL(tourEl.getAttribute("href"), location.origin).href
+            }
+          : { name: null, url: null };
+    
+        matchData.push({
+          team1:      left.name,
+          team1Logo:  left.logo,
+          team2:      right.name,
+          team2Logo:  right.logo,
+          bo,
+          date,
+          streams:   { twitch, youtube },
+          tournament
+        });
+      }
+    
+      return matchData;
     });
 
     await browser.close();
