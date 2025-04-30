@@ -33,7 +33,7 @@ const memoryCache = {
   matchesTimestamp: null, // Timestamp de la última petición
 };
 
-const CACHE_DURATION = 30 * 60 * 1000;
+const CACHE_DURATION = 60 * 60 * 1000;
 
 // Configuración de Swagger
 const swaggerOptions = {
