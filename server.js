@@ -465,6 +465,8 @@ app.get("/matches/upcoming", async (req, res) => {
       timeout: 60000,
     });
 
+    await page.waitForSelector("table.wikitable.infobox_matches_content", { timeout: 15000 });
+
     const matches = await page.evaluate(async () => {
       const tables = document.querySelectorAll("table.infobox_matches_content");
       const matchData = [];
