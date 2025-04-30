@@ -450,7 +450,7 @@ app.get("/matches/upcoming", async (req, res) => {
     });
 
     const matches = await page.evaluate(() => {
-      // 1. Busca el panel “Upcoming Matches” y, dentro de él, sólo las tablas bien formadas
+      // Buscamos el panel Upcoming Matches
       const header = Array.from(document.querySelectorAll(".infobox-header"))
         .find(el => el.textContent.trim() === "Upcoming Matches");
       const panel = header?.closest("div.fo-nttax-infobox.panel");
@@ -459,32 +459,35 @@ app.get("/matches/upcoming", async (req, res) => {
       const rawTables = Array.from(
         panel.querySelectorAll("table.wikitable.infobox_matches_content")
       );
-      // Filtramos sólo las tablas que tengan al menos ambos <td>
       const tables = rawTables.filter(tbl =>
-        tbl.querySelector("td.team-left") &&
-        tbl.querySelector("td.team-right")
+        tbl.querySelector("td.team-left") && tbl.querySelector("td.team-right")
       );
     
-      // 2. Función segura que nunca reciba `null`
-      function extractTeam(cell) {
+      // Ahora extractTeam acepta un segundo parámetro: useDarkMode
+      function extractTeam(cell, useDarkMode = false) {
         if (!cell) return { name: null, logo: null };
-        const nameEl = cell.querySelector(".team-template-text a");
-        const name = nameEl?.textContent.trim() || null;
-        const imgEl  = cell.querySelector("img");
-        const logo   = imgEl
+        const name = cell.querySelector(".team-template-text a")?.textContent.trim() || null;
+    
+        // Elegimos el selector según el flag
+        const imgSelector = useDarkMode
+          ? "span.team-template-image-icon.team-template-darkmode img"
+          : "span.team-template-image-icon.team-template-lightmode img";
+        const imgEl = cell.querySelector(imgSelector) || cell.querySelector("img");
+        const logo = imgEl
           ? new URL(imgEl.getAttribute("src"), location.origin).href
           : null;
+    
         return { name, logo };
       }
     
       const out = [];
       for (const table of tables) {
-        const left  = extractTeam(table.querySelector("td.team-left"));
-        const right = extractTeam(table.querySelector("td.team-right"));
+        // Left: lightmode, Right: darkmode
+        const left  = extractTeam(table.querySelector("td.team-left"), false);
+        const right = extractTeam(table.querySelector("td.team-right"), true);
     
         const bo    = table.querySelector(".versus-lower abbr")?.textContent.trim() || null;
         const date  = table.querySelector(".timer-object-date")?.textContent.trim() || null;
-    
         const twitch  = table.querySelector('a[title*="twitch"]')?.href || null;
         const youtube = table.querySelector('a[title*="youtube"]')?.href || null;
     
@@ -510,6 +513,7 @@ app.get("/matches/upcoming", async (req, res) => {
     
       return out;
     });
+    
     
 
     res.json(matches);
