@@ -439,17 +439,7 @@ app.get("/ranking", async (req, res) => {
  *                     type: string
  */
 app.get("/matches/upcoming", async (req, res) => {
-  try {
     const now = Date.now();
-    if (
-      memoryCache.matches &&
-      memoryCache.matchesTimestamp &&
-      now - memoryCache.matchesTimestamp < CACHE_DURATION
-    ) {
-      console.log("Usando caché para próximos partidos");
-      return res.json(memoryCache.matches);
-    }
-
     const browser = await playwright.chromium.launch({
       headless: true,
       args: [
@@ -462,84 +452,28 @@ app.get("/matches/upcoming", async (req, res) => {
         "--single-process",
       ],
     });
+
     const context = await browser.newContext({
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
       viewport: { width: 1280, height: 720 },
     });
 
-    // ─────────────────────────────────────────────
-    // 1) Forzamos Accept-Language como un navegador real
-    await context.setExtraHTTPHeaders({
-      "Accept-Language": "en-US,en;q=0.9",
-    });
-
     const page = await context.newPage();
-    page.on("response", (response) => {
-      console.log(`→ ${response.status()} ${response.url()}`);
-    });
-
-    // 2) Usamos la versión renderizada (evita JS cliente y suele devolver 200)
-    const LIQUI_URL =
-      "https://liquipedia.net/leagueoflegends/G2_Esports?action=render";
-    await page.goto(LIQUI_URL, {
+    await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
       waitUntil: "domcontentloaded",
       timeout: 60000,
     });
 
-    // 3) Ahora sí esperamos a la tabla
-    await page.waitForSelector("table.infobox_matches_content", {
-      timeout: 60000,
+    const matches = await page.evaluate(() => {
+      const prueba = "OK";
+
+      return prueba;
     });
-
-    const matches = await page.$$eval(
-      "table.infobox_matches_content",
-      (tables) =>
-        tables.map((table) => {
-          const nameLeft =
-            table
-              .querySelector("td.team-left .team-template-text a")
-              ?.textContent.trim() ?? "";
-          const nameRight =
-            table
-              .querySelector("td.team-right .team-template-text a")
-              ?.textContent.trim() ?? "";
-          const opponent =
-            (nameLeft === "G2" ? nameRight : nameLeft) || nameLeft || nameRight;
-
-          const tsElem = table.querySelector(
-            "span.timer-object-countdown-only"
-          );
-          const timestampSec = tsElem?.dataset.timestamp;
-          const date = timestampSec
-            ? new Date(parseInt(timestampSec, 10) * 1000).toISOString()
-            : null;
-
-          const rawDate =
-            table.querySelector(".timer-object-date")?.textContent.trim() ?? "";
-          const tournament =
-            table
-              .querySelector(".tournament-text-flex a")
-              ?.textContent.trim() ?? "";
-
-          const linkElem = table.querySelector(
-            '.has-matchpage a[href*="/leagueoflegends/Match"]'
-          );
-          const matchLink = linkElem?.getAttribute("href") ?? "";
-
-          return { opponent, date, rawDate, tournament, matchLink };
-        })
-    );
 
     await browser.close();
 
-    memoryCache.matches = matches;
-    memoryCache.matchesTimestamp = Date.now();
     res.json(matches);
-  } catch (error) {
-    console.error("Error al obtener próximos partidos:", error);
-    res.status(500).json({ error: "Error interno del servidor" });
-  }
 });
 
 // Endpoint de salud
