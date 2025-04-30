@@ -439,93 +439,42 @@ app.get("/ranking", async (req, res) => {
  *                     type: string
  */
 app.get("/matches/upcoming", async (req, res) => {
-    const now = Date.now();
-    const browser = await playwright.chromium.launch({
-      headless: true,
-      args: [
-        "--no-sandbox",
-        "--disable-setuid-sandbox",
-        "--disable-dev-shm-usage",
-        "--disable-accelerated-2d-canvas",
-        "--disable-gpu",
-        "--no-zygote",
-        "--single-process",
-      ],
-    });
+  let browser;
+  try {
+    browser = await playwright.chromium.launch({ /* tus args */ });
+    const page = await (await browser.newContext({ /* UA, viewport */ })).newPage();
 
-    const context = await browser.newContext({
-      userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
-      viewport: { width: 1280, height: 720 },
-    });
-
-    const page = await context.newPage();
     await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
-      waitUntil: "domcontentloaded",
+      waitUntil: "networkidle",
       timeout: 60000,
     });
 
-    await page.waitForSelector("table.wikitable.infobox_matches_content", { timeout: 15000 });
+    const matches = await page.evaluate(() => {
+      const tables = document.querySelectorAll("table.wikitable.infobox_matches_content");
+      const out = [];
 
-    const matches = await page.evaluate(async () => {
-      const tables = document.querySelectorAll("table.infobox_matches_content");
-      const matchData = [];
-    
-      async function extractTeam(cell) {
-        const nameEl = cell.querySelector(".team-template-text a");
-        const name = nameEl ? nameEl.textContent.trim() : null;
-    
-        const imgEl = cell.querySelector("img");
-        let logo = null;
-        if (imgEl) {
-          const src = new URL(imgEl.getAttribute("src"), location.origin).href;
-          try {
-            const response = await fetch(src);
-            const blob = await response.blob();
-            logo = await new Promise(resolve => {
-              const reader = new FileReader();
-              reader.onload = () => resolve(reader.result);
-              reader.readAsDataURL(blob);
-            });
-          } catch (err) {
-            console.error("Error cargando logo:", err);
-          }
-        }
-    
+      function extractTeam(cell) {
+        const name = cell.querySelector(".team-template-text a")?.textContent.trim() || null;
+        const img = cell.querySelector("img");
+        const logo = img
+          ? new URL(img.getAttribute("src"), location.origin).href
+          : null;
         return { name, logo };
       }
-    
-      for (const table of tables) {
-        // Equipos
-        const leftCell  = table.querySelector("td.team-left");
-        const rightCell = table.querySelector("td.team-right");
-        const left  = await extractTeam(leftCell);
-        const right = await extractTeam(rightCell);
-    
-        // Best-of (ej. "Bo3")
-        const abbr = table.querySelector(".versus-lower abbr");
-        const bo = abbr ? abbr.textContent.trim() : null;
-    
-        // Fecha
-        const dateEl = table.querySelector(".timer-object-date");
-        const date   = dateEl ? dateEl.textContent.trim() : null;
-    
-        // Streams
-        const twitchA  = table.querySelector('a[title*="twitch"]');
-        const youtubeA = table.querySelector('a[title*="youtube"]');
-        const twitch   = twitchA  ? new URL(twitchA.href, location.origin).href : null;
-        const youtube  = youtubeA ? new URL(youtubeA.href, location.origin).href : null;
-    
-        // Torneo
-        const tourEl   = table.querySelector(".tournament-text-flex a");
+
+      tables.forEach(table => {
+        const left  = extractTeam(table.querySelector("td.team-left"));
+        const right = extractTeam(table.querySelector("td.team-right"));
+        const bo    = table.querySelector(".versus-lower abbr")?.textContent.trim() || null;
+        const date  = table.querySelector(".timer-object-date")?.textContent.trim() || null;
+        const twitch  = table.querySelector('a[title*="twitch"]')?.href || null;
+        const youtube = table.querySelector('a[title*="youtube"]')?.href || null;
+        const tourEl  = table.querySelector(".tournament-text-flex a");
         const tournament = tourEl
-          ? {
-              name: tourEl.textContent.trim(),
-              url:  new URL(tourEl.getAttribute("href"), location.origin).href
-            }
+          ? { name: tourEl.textContent.trim(), url: new URL(tourEl.href, location.origin).href }
           : { name: null, url: null };
-    
-        matchData.push({
+
+        out.push({
           team1:      left.name,
           team1Logo:  left.logo,
           team2:      right.name,
@@ -535,15 +484,20 @@ app.get("/matches/upcoming", async (req, res) => {
           streams:   { twitch, youtube },
           tournament
         });
-      }
-    
-      return matchData;
+      });
+
+      return out;
     });
 
-    await browser.close();
-
     res.json(matches);
+  } catch (err) {
+    console.error("Scrape error:", err);
+    res.status(500).json({ status: "error", message: err.message });
+  } finally {
+    if (browser) await browser.close();
+  }
 });
+
 
 // Endpoint de salud
 /**
