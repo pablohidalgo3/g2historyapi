@@ -553,12 +553,12 @@ app.get("/matches/upcoming", async (req, res) => {
 
 /**
  * @swagger
- * /calendar/{index}:
+ * /calendar/{id}:
  *   get:
  *     summary: Devuelve un archivo .ics para un partido
  *     parameters:
  *       - in: path
- *         name: index
+ *         name: id
  *         required: true
  *         schema:
  *           type: string
@@ -566,27 +566,42 @@ app.get("/matches/upcoming", async (req, res) => {
  *       200:
  *         description: Archivo .ics del partido
  */
-app.get("/calendar/:index", async (req, res) => {
-  const { index } = req.params;
+app.get("/calendar/:id", async (req, res) => {
+  const { id } = req.params;
 
   try {
-    // Asegúrate de que la caché esté poblada
+    // Si no hay partidos en caché, hacer scraping primero
     if (!memoryCache.matches) {
-      return res.status(404).json({ error: "No hay partidos disponibles" });
+      const response = await fetch("https://g2historyapi-production.up.railway.app/matches/upcoming");
+      const data = await response.json();
+      memoryCache.matches = data;
+      memoryCache.matchesTimestamp = Date.now();
     }
 
-    const match = memoryCache.matches[parseInt(index)];
+    // Buscar partido por ID
+    const match = memoryCache.matches.find((m) => m.id === id);
     if (!match) {
       return res.status(404).json({ error: "Partido no encontrado" });
     }
 
-    const start = new Date(match.date); // debe ser ISO válido
-    const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hora
+    // Convertir fecha
+    const rawDate = match.date?.replace(" - ", " ").replace(/UTC.*$/, "UTC");
+    const start = new Date(rawDate);
+    if (isNaN(start)) {
+      return res.status(400).json({ error: "Fecha inválida" });
+    }
+
+    const end = new Date(start.getTime() + 60 * 60 * 1000); // duración estimada
 
     const formatICSDate = (d) =>
       d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
-    const uid = `match_${formatICSDate(start)}_${index}@g2leaguehistory.online`;
+    const uid = `${match.id}@g2leaguehistory.online`;
+    const summary = `G2 vs ${match.team2} (${match.tournament?.name || "Match"})`;
+    const description = `Best of ${match.bo}. Watch live on: ${
+      match.streams?.twitch || match.streams?.youtube || ""
+    }`;
+    const location = "Online";
 
     const ics = `
 BEGIN:VCALENDAR
@@ -596,14 +611,12 @@ METHOD:PUBLISH
 PRODID:-//G2 Esports//Match Calendar//EN
 BEGIN:VEVENT
 UID:${uid}
-SUMMARY:G2 vs ${match.team2} (${match.tournament?.name || "Match"})
+SUMMARY:${summary}
 DTSTAMP:${formatICSDate(new Date())}
 DTSTART:${formatICSDate(start)}
 DTEND:${formatICSDate(end)}
-DESCRIPTION:Best of ${match.bo}. Watch live on: ${
-      match.streams.twitch || match.streams.youtube || ""
-    }
-LOCATION:Online
+DESCRIPTION:${description}
+LOCATION:${location}
 STATUS:CONFIRMED
 SEQUENCE:0
 TRANSP:OPAQUE
@@ -615,10 +628,11 @@ END:VCALENDAR
     res.setHeader("Content-Disposition", "inline; filename=match.ics");
     res.send(ics);
   } catch (error) {
-    console.error("Error al generar ICS:", error.message);
-    res.status(500).json({ error: "Error al generar el archivo ICS" });
+    console.error("Error al generar .ics:", error.message);
+    res.status(500).json({ error: "Error interno al generar archivo ICS" });
   }
 });
+
 
 // Endpoint de salud
 /**
