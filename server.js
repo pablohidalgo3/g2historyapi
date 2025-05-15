@@ -441,7 +441,6 @@ app.get("/ranking", async (req, res) => {
 app.get("/matches/upcoming", async (req, res) => {
   let browser;
   try {
-
     const now = Date.now();
     if (
       memoryCache.matches &&
@@ -452,9 +451,14 @@ app.get("/matches/upcoming", async (req, res) => {
       return res.json(memoryCache.matches);
     }
 
-
-    browser = await playwright.chromium.launch({ /* tus args */ });
-    const page = await (await browser.newContext({ /* UA, viewport */ })).newPage();
+    browser = await playwright.chromium.launch({
+      /* tus args */
+    });
+    const page = await (
+      await browser.newContext({
+        /* UA, viewport */
+      })
+    ).newPage();
 
     await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
       waitUntil: "networkidle",
@@ -463,70 +467,78 @@ app.get("/matches/upcoming", async (req, res) => {
 
     const matches = await page.evaluate(() => {
       // Buscamos el panel Upcoming Matches
-      const header = Array.from(document.querySelectorAll(".infobox-header"))
-        .find(el => el.textContent.trim() === "Upcoming Matches");
+      const header = Array.from(
+        document.querySelectorAll(".infobox-header")
+      ).find((el) => el.textContent.trim() === "Upcoming Matches");
       const panel = header?.closest("div.fo-nttax-infobox.panel");
       if (!panel) return [];
-    
+
       const rawTables = Array.from(
         panel.querySelectorAll("table.wikitable.infobox_matches_content")
       );
-      const tables = rawTables.filter(tbl =>
-        tbl.querySelector("td.team-left") && tbl.querySelector("td.team-right")
+      const tables = rawTables.filter(
+        (tbl) =>
+          tbl.querySelector("td.team-left") &&
+          tbl.querySelector("td.team-right")
       );
-    
+
       // Ahora extractTeam acepta un segundo parámetro: useDarkMode
       function extractTeam(cell, useDarkMode = false) {
         if (!cell) return { name: null, logo: null };
-        const name = cell.querySelector(".team-template-text a")?.textContent.trim() || null;
-    
+        const name =
+          cell.querySelector(".team-template-text a")?.textContent.trim() ||
+          null;
+
         // Elegimos el selector según el flag
         const imgSelector = useDarkMode
           ? "span.team-template-image-icon.team-template-darkmode img"
           : "span.team-template-image-icon.team-template-lightmode img";
-        const imgEl = cell.querySelector(imgSelector) || cell.querySelector("img");
+        const imgEl =
+          cell.querySelector(imgSelector) || cell.querySelector("img");
         const logo = imgEl
           ? new URL(imgEl.getAttribute("src"), location.origin).href
           : null;
-    
+
         return { name, logo };
       }
-    
+
       const out = [];
       for (const table of tables) {
         // Left: lightmode, Right: darkmode
-        const left  = extractTeam(table.querySelector("td.team-left"), false);
+        const left = extractTeam(table.querySelector("td.team-left"), false);
         const right = extractTeam(table.querySelector("td.team-right"), true);
-    
-        const bo    = table.querySelector(".versus-lower abbr")?.textContent.trim() || null;
-        const date  = table.querySelector(".timer-object-date")?.textContent.trim() || null;
-        const twitch  = table.querySelector('a[title*="twitch"]')?.href || null;
-        const youtube = table.querySelector('a[title*="youtube"]')?.href || null;
-    
+
+        const bo =
+          table.querySelector(".versus-lower abbr")?.textContent.trim() || null;
+        const date =
+          table.querySelector(".timer-object-date")?.textContent.trim() || null;
+        const twitch = table.querySelector('a[title*="twitch"]')?.href || null;
+        const youtube =
+          table.querySelector('a[title*="youtube"]')?.href || null;
+
         const tourEl = table.querySelector(".tournament-text-flex a");
         const tournament = tourEl
           ? {
               name: tourEl.textContent.trim(),
-              url:  new URL(tourEl.getAttribute("href"), location.origin).href
+              url: new URL(tourEl.getAttribute("href"), location.origin).href,
             }
           : { name: null, url: null };
-    
+
         out.push({
-          team1:      left.name,
-          team1Logo:  left.logo,
-          team2:      right.name,
-          team2Logo:  right.logo,
+          team1: left.name,
+          team1Logo: left.logo,
+          team2: right.name,
+          team2Logo: right.logo,
           bo,
           date,
-          streams:   { twitch, youtube },
-          tournament
+          streams: { twitch, youtube },
+          tournament,
         });
       }
-    
+
       return out;
     });
-    
-    
+
     memoryCache.matches = matches;
     memoryCache.matchesTimestamp = now;
     res.json(matches);
@@ -538,6 +550,74 @@ app.get("/matches/upcoming", async (req, res) => {
   }
 });
 
+/**
+ * @swagger
+ * /calendar/{index}:
+ *   get:
+ *     summary: Devuelve un archivo .ics para un partido
+ *     parameters:
+ *       - in: path
+ *         name: index
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: Archivo .ics del partido
+ */
+app.get("/calendar/:index", async (req, res) => {
+  const { index } = req.params;
+
+  try {
+    // Asegúrate de que la caché esté poblada
+    if (!memoryCache.matches) {
+      return res.status(404).json({ error: "No hay partidos disponibles" });
+    }
+
+    const match = memoryCache.matches[parseInt(index)];
+    if (!match) {
+      return res.status(404).json({ error: "Partido no encontrado" });
+    }
+
+    const start = new Date(match.date); // debe ser ISO válido
+    const end = new Date(start.getTime() + 60 * 60 * 1000); // 1 hora
+
+    const formatICSDate = (d) =>
+      d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+
+    const uid = `match_${formatICSDate(start)}_${index}@g2leaguehistory.online`;
+
+    const ics = `
+BEGIN:VCALENDAR
+VERSION:2.0
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+PRODID:-//G2 Esports//Match Calendar//EN
+BEGIN:VEVENT
+UID:${uid}
+SUMMARY:G2 vs ${match.team2} (${match.tournament?.name || "Match"})
+DTSTAMP:${formatICSDate(new Date())}
+DTSTART:${formatICSDate(start)}
+DTEND:${formatICSDate(end)}
+DESCRIPTION:Best of ${match.bo}. Watch live on: ${
+      match.streams.twitch || match.streams.youtube || ""
+    }
+LOCATION:Online
+STATUS:CONFIRMED
+SEQUENCE:0
+TRANSP:OPAQUE
+END:VEVENT
+END:VCALENDAR
+`.trim();
+
+    res.setHeader("Content-Type", "text/calendar");
+    res.setHeader("Content-Disposition", "inline; filename=match.ics");
+    res.send(ics);
+  } catch (error) {
+    console.error("Error al generar ICS:", error.message);
+    res.status(500).json({ error: "Error al generar el archivo ICS" });
+  }
+});
 
 // Endpoint de salud
 /**
