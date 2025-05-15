@@ -525,6 +525,7 @@ app.get("/matches/upcoming", async (req, res) => {
           : { name: null, url: null };
 
         out.push({
+          id: `${left.name}-${right.name}-${date.replace(/\s+/g, "_")}`,
           team1: left.name,
           team1Logo: left.logo,
           team2: right.name,
