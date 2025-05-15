@@ -625,7 +625,7 @@ END:VCALENDAR
 `.trim();
 
     res.setHeader("Content-Type", "text/calendar");
-    res.setHeader("Content-Disposition", "inline; filename=match.ics");
+    res.setHeader("Content-Disposition", "attachment; filename=match.ics");
     res.send(ics);
   } catch (error) {
     console.error("Error al generar .ics:", error.message);
