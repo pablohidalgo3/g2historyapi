@@ -264,8 +264,8 @@ app.post("/cache/clear", (req, res) => {
   memoryCache.players = null;
   memoryCache.playersByYear.clear();
   memoryCache.playerByIdOrNickname.clear();
-  memoryCache.matches.clear();
-  memoryCache.matchesTimestamp.clear();
+  memoryCache.matches = null;
+  memoryCache.matchesTimestamp = null;
   res.json({ message: "Caché limpiada" });
 });
 
@@ -568,7 +568,9 @@ app.get("/calendar/:id", async (req, res) => {
   try {
     // Si no hay partidos en caché, hacer scraping primero
     if (!memoryCache.matches) {
-      const response = await fetch("https://g2historyapi-production.up.railway.app/matches/upcoming");
+      const response = await fetch(
+        "https://g2historyapi-production.up.railway.app/matches/upcoming"
+      );
       const data = await response.json();
       memoryCache.matches = data;
       memoryCache.matchesTimestamp = Date.now();
@@ -593,7 +595,9 @@ app.get("/calendar/:id", async (req, res) => {
       d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
     const uid = `${match.id}@g2leaguehistory.online`;
-    const summary = `G2 vs ${match.team2} (${match.tournament?.name || "Match"})`;
+    const summary = `G2 vs ${match.team2} (${
+      match.tournament?.name || "Match"
+    })`;
     const description = `Best of ${match.bo}. Watch live on: ${
       match.streams?.twitch || match.streams?.youtube || ""
     }`;
@@ -628,7 +632,6 @@ END:VCALENDAR
     res.status(500).json({ error: "Error interno al generar archivo ICS" });
   }
 });
-
 
 // Endpoint de salud
 /**
