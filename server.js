@@ -47,12 +47,8 @@ const swaggerOptions = {
     },
     servers: [
       {
-        url: `http://localhost:${PORT}`,
-        description: "Servidor local",
-      },
-      {
-        url: "https://g2historyapi-production.up.railway.app/", // Reemplaza <tu-api> con el subdominio asignado por Railway
-        description: "Servidor de producción (Railway)",
+        url: "https://g2historyapi.fly.dev/",
+        description: "Servidor de producción (Fly.io)",
       },
     ],
   },
