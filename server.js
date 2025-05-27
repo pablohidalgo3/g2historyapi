@@ -513,12 +513,19 @@ app.get("/matches/upcoming", async (req, res) => {
           table.querySelector('a[title*="youtube"]')?.href || null;
 
         const tourEl = table.querySelector(".tournament-text-flex a");
+        const logoEl = table.querySelector(
+          ".league-icon-small-image.lightmode img"
+        );
+
         const tournament = tourEl
           ? {
               name: tourEl.textContent.trim(),
               url: new URL(tourEl.getAttribute("href"), location.origin).href,
+              logo: logoEl
+                ? new URL(logoEl.getAttribute("src"), location.origin).href
+                : null,
             }
-          : { name: null, url: null };
+          : { name: null, url: null, logo: null };
 
         out.push({
           id: `${left.name}-${right.name}-${date.replace(/\s+/g, "_")}`,
