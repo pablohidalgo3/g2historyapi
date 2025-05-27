@@ -514,7 +514,7 @@ app.get("/matches/upcoming", async (req, res) => {
 
         const tourEl = table.querySelector(".tournament-text-flex a");
         const logoEl = table.querySelector(
-          ".league-icon-small-image.lightmode img"
+          ".league-icon-small-image.darkmode img"
         );
 
         const tournament = tourEl
