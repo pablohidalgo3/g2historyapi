@@ -264,6 +264,8 @@ app.post("/cache/clear", (req, res) => {
   memoryCache.players = null;
   memoryCache.playersByYear.clear();
   memoryCache.playerByIdOrNickname.clear();
+  memoryCache.ranking = null;
+  memoryCache.rankingTimestamp = null;
   memoryCache.matches = null;
   memoryCache.matchesTimestamp = null;
   res.json({ message: "Caché limpiada" });
@@ -409,9 +411,9 @@ app.get("/ranking", async (req, res) => {
 
 /**
  * @swagger
- * /matches/upcoming:
- *   get:
- *     summary: Obtiene los próximos partidos de G2 Esports desde Liquipedia
+ * /matches/sync:
+ *   post:
+ *     summary: Sincroniza los próximos partidos de G2 Esports desde Liquipedia
  *     responses:
  *       200:
  *         description: Lista de próximos partidos con fecha, rival, torneo y enlace al match
@@ -434,20 +436,10 @@ app.get("/ranking", async (req, res) => {
  *                   matchLink:
  *                     type: string
  */
-app.get("/matches/upcoming", async (req, res) => {
+app.post("/matches/sync", async (req, res) => {
   let browser;
   try {
-    const now = Date.now();
-    if (
-      memoryCache.matches &&
-      memoryCache.matchesTimestamp &&
-      now - memoryCache.matchesTimestamp < CACHE_DURATION
-    ) {
-      console.log("Usando caché para los partidos");
-      return res.json(memoryCache.matches);
-    }
-
-    const browser = await playwright.chromium.launch({
+    browser = await playwright.chromium.launch({
       headless: true,
       args: [
         "--no-sandbox",
@@ -555,16 +547,120 @@ app.get("/matches/upcoming", async (req, res) => {
       return out;
     });
 
-    memoryCache.matches = matches;
-    memoryCache.matchesTimestamp = now;
-    res.json(matches);
+    // Borrar registros anteriores
+    await db.execute("DELETE FROM matches_upcoming");
+
+    // Insertar los nuevos
+    for (const match of matches) {
+      await db.execute(
+        `INSERT INTO matches_upcoming
+        (id, team1, team1Logo, team2, team2Logo, bo, date, streams_twitch, streams_youtube, tournament_name, tournament_url, tournament_logo)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          match.id,
+          match.team1,
+          match.team1Logo,
+          match.team2,
+          match.team2Logo,
+          match.bo,
+          match.date,
+          match.streams.twitch,
+          match.streams.youtube,
+          match.tournament.name,
+          match.tournament.url,
+          match.tournament.logo,
+        ]
+      );
+    }
+
+    res.json({ status: "ok", updated: matches.length });
   } catch (err) {
-    console.error("Scrape error:", err);
-    res.status(500).json({ status: "error", message: err.message });
+    console.error("Error en /matches/sync:", err.message);
+    res.status(500).json({ error: "Error al sincronizar partidos" });
   } finally {
     if (browser) await browser.close();
   }
 });
+
+
+/**
+ * @swagger
+ * /matches/upcoming:
+ *   get:
+ *     summary: Obtiene los próximos partidos de G2 Esports desde la base de datos
+ *     description: Devuelve la lista de partidos previamente almacenados en la base de datos mediante sincronización.
+ *     responses:
+ *       200:
+ *         description: Lista de próximos partidos
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 type: object
+ *                 properties:
+ *                   id:
+ *                     type: string
+ *                     example: "G2 Esports-Fnatic-2025_06_20_18:00"
+ *                   team1:
+ *                     type: string
+ *                     example: "G2 Esports"
+ *                   team1Logo:
+ *                     type: string
+ *                     example: "https://liquipedia.net/commons/images/1/12/G2_Esportslogo_std.png"
+ *                   team2:
+ *                     type: string
+ *                     example: "Fnatic"
+ *                   team2Logo:
+ *                     type: string
+ *                     example: "https://liquipedia.net/commons/images/3/3d/Fnaticlogo_std.png"
+ *                   bo:
+ *                     type: string
+ *                     example: "BO5"
+ *                   date:
+ *                     type: string
+ *                     example: "2025-06-20 18:00"
+ *                   streams_twitch:
+ *                     type: string
+ *                     example: "https://twitch.tv/lolesports"
+ *                   streams_youtube:
+ *                     type: string
+ *                     example: "https://youtube.com/lolesports"
+ *                   tournament_name:
+ *                     type: string
+ *                     example: "LEC Summer 2025"
+ *                   tournament_url:
+ *                     type: string
+ *                     example: "https://liquipedia.net/leagueoflegends/LEC/2025/Summer"
+ *                   tournament_logo:
+ *                     type: string
+ *                     example: "https://liquipedia.net/commons/images/7/7c/LEC_Logo_full.png"
+ *                   created_at:
+ *                     type: string
+ *                     format: date-time
+ *                     example: "2025-06-16T10:20:30.000Z"
+ *       500:
+ *         description: Error interno del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 error:
+ *                   type: string
+ *                   example: "Error interno del servidor"
+ */
+
+app.get("/matches/upcoming", async (req, res) => {
+  try {
+    const result = await db.execute("SELECT * FROM matches_upcoming ORDER BY date");
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error al obtener partidos desde BD:", err.message);
+    res.status(500).json({ error: "Error interno del servidor" });
+  }
+});
+
 
 /**
  * @swagger
@@ -588,7 +684,7 @@ app.get("/calendar/:id", async (req, res) => {
     // Si no hay partidos en caché, hacer scraping primero
     if (!memoryCache.matches) {
       const response = await fetch(
-        "https://g2historyapi-production.up.railway.app/matches/upcoming"
+        "https://g2historyapi.fly.dev/matches/upcoming"
       );
       const data = await response.json();
       memoryCache.matches = data;
