@@ -1,0 +1,16 @@
+name: Sync Matches
+
+on:
+  schedule:
+    - cron: '0 0 * * *'    # A las 00:00 UTC
+    - cron: '0 18 * * *'   # A las 18:00 UTC
+  workflow_dispatch:        # Permite lanzarlo manualmente si quieres
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Call matches/sync endpoint
+        run: |
+          curl -X POST https://g2historyapi.fly.dev/matches/sync
