@@ -473,6 +473,7 @@ app.post("/matches/sync", async (req, res) => {
           p.querySelector(".infobox-header")?.textContent.trim() ===
           "Upcoming Matches"
       );
+
       if (!panel) return [];
 
       const tables = Array.from(
@@ -481,77 +482,76 @@ app.post("/matches/sync", async (req, res) => {
       const out = [];
 
       for (const table of tables) {
-        const rows = Array.from(table.querySelectorAll("tbody > tr"));
-        for (let i = 0; i < rows.length - 1; i++) {
-          const row = rows[i];
-          const nextRow = rows[i + 1];
+        const rows = table.querySelectorAll("tr");
+        if (rows.length < 2) continue;
 
-          const teamLeftCell = row.querySelector("td.team-left");
-          const teamRightCell = row.querySelector("td.team-right");
+        const teamRow = rows[0];
+        const infoRow = rows[1];
 
-          if (teamLeftCell && teamRightCell) {
-            const leftName =
-              teamLeftCell
-                .querySelector(".team-template-text a")
-                ?.textContent.trim() || null;
-            const leftLogo = teamLeftCell.querySelector("img")
-              ? new URL(
-                  teamLeftCell.querySelector("img").getAttribute("src"),
-                  location.origin
-                ).href
-              : null;
+        // Equipos
+        const teamLeftCell = teamRow.querySelector("td.team-left");
+        const teamRightCell = teamRow.querySelector("td.team-right");
 
-            const rightName =
-              teamRightCell
-                .querySelector(".team-template-text a")
-                ?.textContent.trim() || null;
-            const rightLogo = teamRightCell.querySelector("img")
-              ? new URL(
-                  teamRightCell.querySelector("img").getAttribute("src"),
-                  location.origin
-                ).href
-              : null;
+        const leftName =
+          teamLeftCell
+            ?.querySelector(".team-template-text a")
+            ?.textContent.trim() || null;
+        const leftLogo = teamLeftCell?.querySelector("img")
+          ? new URL(
+              teamLeftCell.querySelector("img").getAttribute("src"),
+              location.origin
+            ).href
+          : null;
 
-            const bo =
-              row.querySelector(".versus-lower abbr")?.textContent.trim() ||
-              null;
+        const rightName =
+          teamRightCell
+            ?.querySelector(".team-template-text a")
+            ?.textContent.trim() || null;
+        const rightLogo = teamRightCell?.querySelector("img")
+          ? new URL(
+              teamRightCell.querySelector("img").getAttribute("src"),
+              location.origin
+            ).href
+          : null;
 
-            // Info de la siguiente fila
-            const date =
-              nextRow.querySelector(".timer-object-date")?.textContent.trim() ||
-              null;
-            const twitch =
-              nextRow.querySelector('a[title*="twitch"]')?.href || null;
-            const youtube =
-              nextRow.querySelector('a[title*="youtube"]')?.href || null;
+        const bo =
+          teamRow.querySelector(".versus-lower abbr")?.textContent.trim() ||
+          null;
 
-            const tourEl = nextRow.querySelector(".tournament-text-flex a");
-            const tourName = tourEl?.textContent.trim() || null;
-            const tourUrl = tourEl
-              ? new URL(tourEl.getAttribute("href"), location.origin).href
-              : null;
+        // Info partido
+        const date =
+          infoRow.querySelector(".timer-object-date")?.textContent.trim() ||
+          null;
+        const twitch =
+          infoRow.querySelector('a[title*="twitch"]')?.href || null;
+        const youtube =
+          infoRow.querySelector('a[title*="youtube"]')?.href || null;
 
-            const logoEl = nextRow.querySelector(
-              ".league-icon-small-image img"
-            );
-            const tourLogo = logoEl
-              ? new URL(logoEl.getAttribute("src"), location.origin).href
-              : null;
+        const tourEl = infoRow.querySelector(".tournament-text-flex a");
+        const tourName = tourEl?.textContent.trim() || null;
+        const tourUrl = tourEl
+          ? new URL(tourEl.getAttribute("href"), location.origin).href
+          : null;
 
-            out.push({
-              id: `${leftName}-${rightName}-${
-                date ? date.replace(/\s+/g, "_") : "unknown"
-              }`,
-              team1: leftName,
-              team1Logo: leftLogo,
-              team2: rightName,
-              team2Logo: rightLogo,
-              bo,
-              date,
-              streams: { twitch, youtube },
-              tournament: { name: tourName, url: tourUrl, logo: tourLogo },
-            });
-          }
+        const logoEl = infoRow.querySelector(".league-icon-small-image img");
+        const tourLogo = logoEl
+          ? new URL(logoEl.getAttribute("src"), location.origin).href
+          : null;
+
+        if (leftName && rightName) {
+          out.push({
+            id: `${leftName}-${rightName}-${
+              date ? date.replace(/\s+/g, "_") : "unknown"
+            }`,
+            team1: leftName,
+            team1Logo: leftLogo,
+            team2: rightName,
+            team2Logo: rightLogo,
+            bo,
+            date,
+            streams: { twitch, youtube },
+            tournament: { name: tourName, url: tourUrl, logo: tourLogo },
+          });
         }
       }
 
