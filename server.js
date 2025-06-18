@@ -466,82 +466,86 @@ app.post("/matches/sync", async (req, res) => {
     });
 
     const matches = await page.evaluate(() => {
-      // Buscamos el panel Upcoming Matches
-      const header = Array.from(
-        document.querySelectorAll(".infobox-header")
-      ).find((el) => el.textContent.trim() === "Upcoming Matches");
-      const panel = header?.closest("div.fo-nttax-infobox.panel");
+      const panel = Array.from(
+        document.querySelectorAll(".fo-nttax-infobox.panel")
+      ).find(
+        (p) =>
+          p.querySelector(".infobox-header")?.textContent.trim() ===
+          "Upcoming Matches"
+      );
       if (!panel) return [];
 
-      const rawTables = Array.from(
-        panel.querySelectorAll("table.wikitable.infobox_matches_content")
+      const rows = Array.from(
+        panel.querySelectorAll("table.infobox_matches_content > tbody > tr")
       );
-      const tables = rawTables.filter(
-        (tbl) =>
-          tbl.querySelector("td.team-left") &&
-          tbl.querySelector("td.team-right")
-      );
-
-      // Ahora extractTeam acepta un segundo parámetro: useDarkMode
-      function extractTeam(cell, useDarkMode = false) {
-        if (!cell) return { name: null, logo: null };
-        const name =
-          cell.querySelector(".team-template-text a")?.textContent.trim() ||
-          null;
-
-        // Elegimos el selector según el flag
-        const imgSelector = useDarkMode
-          ? "span.team-template-image-icon.team-template-darkmode img"
-          : "span.team-template-image-icon.team-template-lightmode img";
-        const imgEl =
-          cell.querySelector(imgSelector) || cell.querySelector("img");
-        const logo = imgEl
-          ? new URL(imgEl.getAttribute("src"), location.origin).href
-          : null;
-
-        return { name, logo };
-      }
 
       const out = [];
-      for (const table of tables) {
-        // Left: lightmode, Right: darkmode
-        const left = extractTeam(table.querySelector("td.team-left"), false);
-        const right = extractTeam(table.querySelector("td.team-right"), true);
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
 
-        const bo =
-          table.querySelector(".versus-lower abbr")?.textContent.trim() || null;
-        const date =
-          table.querySelector(".timer-object-date")?.textContent.trim() || null;
-        const twitch = table.querySelector('a[title*="twitch"]')?.href || null;
-        const youtube =
-          table.querySelector('a[title*="youtube"]')?.href || null;
+        const leftCell = row.querySelector("td.team-left");
+        const rightCell = row.querySelector("td.team-right");
 
-        const tourEl = table.querySelector(".tournament-text-flex a");
-        const logoEl = table.querySelector(
-          ".league-icon-small-image.darkmode img"
-        );
+        if (leftCell && rightCell) {
+          // Extract teams
+          const leftName =
+            leftCell
+              .querySelector(".team-template-text a")
+              ?.textContent.trim() || null;
+          const leftLogo = leftCell.querySelector("img")
+            ? new URL(
+                leftCell.querySelector("img").getAttribute("src"),
+                location.origin
+              ).href
+            : null;
 
-        const tournament = tourEl
-          ? {
-              name: tourEl.textContent.trim(),
-              url: new URL(tourEl.getAttribute("href"), location.origin).href,
-              logo: logoEl
-                ? new URL(logoEl.getAttribute("src"), location.origin).href
-                : null,
-            }
-          : { name: null, url: null, logo: null };
+          const rightName =
+            rightCell
+              .querySelector(".team-template-text a")
+              ?.textContent.trim() || null;
+          const rightLogo = rightCell.querySelector("img")
+            ? new URL(
+                rightCell.querySelector("img").getAttribute("src"),
+                location.origin
+              ).href
+            : null;
 
-        out.push({
-          id: `${left.name}-${right.name}-${date.replace(/\s+/g, "_")}`,
-          team1: left.name,
-          team1Logo: left.logo,
-          team2: right.name,
-          team2Logo: right.logo,
-          bo,
-          date,
-          streams: { twitch, youtube },
-          tournament,
-        });
+          // Look ahead to the next row for match info
+          const infoRow = rows[i + 1];
+          const date =
+            infoRow?.querySelector(".timer-object-date")?.textContent.trim() ||
+            null;
+          const bo =
+            row.querySelector(".versus-lower abbr")?.textContent.trim() || null;
+          const twitch =
+            infoRow?.querySelector('a[title*="twitch"]')?.href || null;
+          const youtube =
+            infoRow?.querySelector('a[title*="youtube"]')?.href || null;
+
+          const tourEl = infoRow?.querySelector(".tournament-text-flex a");
+          const tourName = tourEl?.textContent.trim() || null;
+          const tourUrl = tourEl
+            ? new URL(tourEl.getAttribute("href"), location.origin).href
+            : null;
+          const logoEl = infoRow?.querySelector(".league-icon-small-image img");
+          const tourLogo = logoEl
+            ? new URL(logoEl.getAttribute("src"), location.origin).href
+            : null;
+
+          out.push({
+            id: `${leftName}-${rightName}-${
+              date ? date.replace(/\s+/g, "_") : "unknown"
+            }`,
+            team1: leftName,
+            team1Logo: leftLogo,
+            team2: rightName,
+            team2Logo: rightLogo,
+            bo,
+            date,
+            streams: { twitch, youtube },
+            tournament: { name: tourName, url: tourUrl, logo: tourLogo },
+          });
+        }
       }
 
       return out;
@@ -581,7 +585,6 @@ app.post("/matches/sync", async (req, res) => {
     if (browser) await browser.close();
   }
 });
-
 
 /**
  * @swagger
@@ -653,14 +656,15 @@ app.post("/matches/sync", async (req, res) => {
 
 app.get("/matches/upcoming", async (req, res) => {
   try {
-    const result = await db.execute("SELECT * FROM matches_upcoming ORDER BY date");
+    const result = await db.execute(
+      "SELECT * FROM matches_upcoming ORDER BY date"
+    );
     res.json(result.rows);
   } catch (err) {
     console.error("Error al obtener partidos desde BD:", err.message);
     res.status(500).json({ error: "Error interno del servidor" });
   }
 });
-
 
 /**
  * @swagger
