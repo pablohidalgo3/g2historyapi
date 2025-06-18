@@ -467,69 +467,89 @@ app.post("/matches/sync", async (req, res) => {
       timeout: 60000,
     });
 
-    // 1) Esperamos a que aparezca el header "Upcoming Matches"
     await page.waitForSelector(".fo-nttax-infobox.panel .infobox-header", {
       timeout: 60000,
     });
 
-    // 2) Extraemos directamente de cada tabla
     const matches = await page.$$eval(
       ".fo-nttax-infobox.panel table.infobox_matches_content",
       (tables, origin) => {
-        return tables.flatMap((table) => {
-          const team1 = table
-            .querySelector("td.team-left .team-template-text a")
-            ?.textContent.trim();
-          const team2 = table
-            .querySelector("td.team-right .team-template-text a")
-            ?.textContent.trim();
-          if (!team1 || !team2) return [];
+        return tables
+          .map((table) => {
+            // Equipos
+            const team1El = table.querySelector(
+              "td.team-left .team-template-text a"
+            );
+            const team2El = table.querySelector(
+              "td.team-right .team-template-text a"
+            );
+            const team1 = team1El?.textContent.trim() ?? null;
+            const team2 = team2El?.textContent.trim() ?? null;
 
-          const bo =
-            table
-              .querySelector("td.team-left .versus-lower abbr")
-              ?.textContent.trim() ?? null;
-          const dateText =
-            table.querySelector(".timer-object-date")?.textContent.trim() ??
-            null;
-          const twitchLink =
-            table.querySelector('a[title*="twitch"]')?.href ?? null;
-          const youtubeLink =
-            table.querySelector('a[title*="youtube"]')?.href ?? null;
+            // Logos (tomamos el primer <img> disponible)
+            const logo1El = table.querySelector(
+              "td.team-left .team-template-image-icon img"
+            );
+            const logo2El = table.querySelector(
+              "td.team-right .team-template-image-icon img"
+            );
+            const team1Logo = logo1El
+              ? new URL(logo1El.getAttribute("src"), origin).href
+              : null;
+            const team2Logo = logo2El
+              ? new URL(logo2El.getAttribute("src"), origin).href
+              : null;
 
-          const tourEl = table.querySelector(".tournament-text-flex a");
-          const tourName = tourEl?.textContent.trim() ?? null;
-          const tourUrl = tourEl?.href
-            ? new URL(tourEl.href, origin).href
-            : null;
+            // Formato de la serie: Bo1, Bo3, Bo5…
+            const boEl = table.querySelector("td.versus .versus-lower abbr");
+            const bo = boEl?.textContent.trim() ?? null;
 
-          const tourLogo = table
-            .querySelector(".league-icon-small-image img")
-            ?.getAttribute("src");
-          const tourLogoUrl = tourLogo ? new URL(tourLogo, origin).href : null;
+            // Fecha tal cual la muestra el DOM (incluye zona horaria)
+            const dateEl = table.querySelector(".timer-object-date");
+            const date = dateEl?.textContent.trim() ?? null;
 
-          return [
-            {
+            // Streams: Twitch y YouTube
+            const twitchEl = table.querySelector('a[title*="twitch"]');
+            const youtubeEl = table.querySelector('a[title*="youtube"]');
+            const twitch = twitchEl
+              ? new URL(twitchEl.getAttribute("href"), origin).href
+              : null;
+            const youtube = youtubeEl
+              ? new URL(youtubeEl.getAttribute("href"), origin).href
+              : null;
+
+            // Torneo: nombre, URL y logo
+            const tourEl = table.querySelector(".tournament-text-flex a");
+            const tourName = tourEl?.textContent.trim() ?? null;
+            const tourUrl = tourEl
+              ? new URL(tourEl.getAttribute("href"), origin).href
+              : null;
+            const tourLogoEl = table.querySelector(
+              ".league-icon-small-image img"
+            );
+            const tourLogo = tourLogoEl
+              ? new URL(tourLogoEl.getAttribute("src"), origin).href
+              : null;
+
+            if (!team1 || !team2) return null;
+            return {
               id: `${team1}-${team2}-${
-                dateText ? dateText.replace(/\s+/g, "_") : "unknown"
+                date?.replace(/\s+/g, "_") ?? "unknown"
               }`,
               team1,
+              team1Logo,
               team2,
+              team2Logo,
               bo,
-              date: dateText,
-              streams: { twitch: twitchLink, youtube: youtubeLink },
-              tournament: {
-                name: tourName,
-                url: tourUrl,
-                logo: tourLogoUrl,
-              },
-            },
-          ];
-        });
+              date,
+              streams: { twitch, youtube },
+              tournament: { name: tourName, url: tourUrl, logo: tourLogo },
+            };
+          })
+          .filter((m) => m !== null);
       },
-      page.url().startsWith("http")
-        ? new URL(page.url()).origin
-        : "https://liquipedia.net"
+      // origen para resolver URLs relativas
+      new URL(page.url()).origin
     );
 
     // Vaciamos y recargamos
