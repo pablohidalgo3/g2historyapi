@@ -453,7 +453,6 @@ app.post("/matches/sync", async (req, res) => {
     });
 
     const context = await browser.newContext({
-      // mejor usar un UA más moderno para evitar servirse versiones “móviles” o simplificadas
       userAgent:
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
         "AppleWebKit/537.36 (KHTML, like Gecko) " +
@@ -467,104 +466,115 @@ app.post("/matches/sync", async (req, res) => {
       timeout: 60000,
     });
 
+    // 1) Asegurarnos de que el panel "Upcoming Matches" está ya en el DOM
     await page.waitForSelector(".fo-nttax-infobox.panel .infobox-header", {
       timeout: 60000,
     });
 
-    const matches = await page.$$eval(
-      ".fo-nttax-infobox.panel table.infobox_matches_content",
-      (tables, origin) => {
-        return tables
-          .map((table) => {
-            // Equipos
-            const team1El = table.querySelector(
-              "td.team-left .team-template-text a"
-            );
-            const team2El = table.querySelector(
-              "td.team-right .team-template-text a"
-            );
-            const team1 = team1El?.textContent.trim() ?? null;
-            const team2 = team2El?.textContent.trim() ?? null;
+    // 2) Scrapeamos cada tabla de partidos
+    const matches = await page.evaluate(() => {
+      const origin = location.origin;
+      // Buscamos el panel por su header
+      const panel = Array.from(
+        document.querySelectorAll(".fo-nttax-infobox.panel")
+      ).find((p) => {
+        const hdr = p.querySelector(".infobox-header");
+        return hdr?.textContent.trim().includes("Upcoming Matches");
+      });
+      if (!panel) return [];
 
-            // Logos (tomamos el primer <img> disponible)
-            const logo1El = table.querySelector(
-              "td.team-left .team-template-image-icon img"
-            );
-            const logo2El = table.querySelector(
-              "td.team-right .team-template-image-icon img"
-            );
-            const team1Logo = logo1El
-              ? new URL(logo1El.getAttribute("src"), origin).href
-              : null;
-            const team2Logo = logo2El
-              ? new URL(logo2El.getAttribute("src"), origin).href
-              : null;
+      const out = [];
+      for (const table of panel.querySelectorAll(
+        "table.infobox_matches_content"
+      )) {
+        const teamRow = table.querySelector("tr:nth-child(1)");
+        const infoRow = table.querySelector("tr:nth-child(2)");
+        if (!teamRow || !infoRow) continue;
 
-            // Formato de la serie: Bo1, Bo3, Bo5…
-            const boEl = table.querySelector("td.versus .versus-lower abbr");
-            const bo = boEl?.textContent.trim() ?? null;
+        // — Equipos y logos
+        const team1El = teamRow.querySelector(
+          "td.team-left .team-template-text a"
+        );
+        const team2El = teamRow.querySelector(
+          "td.team-right .team-template-text a"
+        );
+        const team1 = team1El?.textContent.trim() || null;
+        const team2 = team2El?.textContent.trim() || null;
 
-            // Fecha tal cual la muestra el DOM (incluye zona horaria)
-            const dateEl = table.querySelector(".timer-object-date");
-            const date = dateEl?.textContent.trim() ?? null;
+        const logo1El = teamRow.querySelector(
+          "td.team-left .team-template-image-icon img"
+        );
+        const logo2El = teamRow.querySelector(
+          "td.team-right .team-template-image-icon img"
+        );
+        const team1Logo = logo1El ? new URL(logo1El.src, origin).href : null;
+        const team2Logo = logo2El ? new URL(logo2El.src, origin).href : null;
 
-            // Streams: Twitch y YouTube
-            const twitchEl = table.querySelector('a[title*="twitch"]');
-            const youtubeEl = table.querySelector('a[title*="youtube"]');
-            const twitch = twitchEl
-              ? new URL(twitchEl.getAttribute("href"), origin).href
-              : null;
-            const youtube = youtubeEl
-              ? new URL(youtubeEl.getAttribute("href"), origin).href
-              : null;
+        // — Formato (Bo1, Bo3, Bo5…)
+        const boEl = teamRow.querySelector("td.versus .versus-lower abbr");
+        const bo = boEl?.textContent.trim() || null;
 
-            // Torneo: nombre, URL y logo
-            const tourEl = table.querySelector(".tournament-text-flex a");
-            const tourName = tourEl?.textContent.trim() ?? null;
-            const tourUrl = tourEl
-              ? new URL(tourEl.getAttribute("href"), origin).href
-              : null;
-            const tourLogoEl = table.querySelector(
-              ".league-icon-small-image img"
-            );
-            const tourLogo = tourLogoEl
-              ? new URL(tourLogoEl.getAttribute("src"), origin).href
-              : null;
+        // — Fecha (texto + abreviatura de zona)
+        const dateEl = infoRow.querySelector(".timer-object-date");
+        const date = dateEl?.textContent.trim() || null;
 
-            if (!team1 || !team2) return null;
-            return {
-              id: `${team1}-${team2}-${
-                date?.replace(/\s+/g, "_") ?? "unknown"
-              }`,
-              team1,
-              team1Logo,
-              team2,
-              team2Logo,
-              bo,
-              date,
-              streams: { twitch, youtube },
-              tournament: { name: tourName, url: tourUrl, logo: tourLogo },
-            };
-          })
-          .filter((m) => m !== null);
-      },
-      // origen para resolver URLs relativas
-      new URL(page.url()).origin
-    );
+        // — Streams
+        const twitchEl = infoRow.querySelector('a[title*="twitch"]');
+        const youtubeEl = infoRow.querySelector('a[title*="youtube"]');
+        const twitch = twitchEl
+          ? new URL(twitchEl.getAttribute("href"), origin).href
+          : null;
+        const youtube = youtubeEl
+          ? new URL(youtubeEl.getAttribute("href"), origin).href
+          : null;
 
-    // Vaciamos y recargamos
+        // — Torneo (nombre, URL, logo)
+        const tourEl = infoRow.querySelector(".tournament-text-flex a");
+        const tourName = tourEl?.textContent.trim() || null;
+        const tourUrl = tourEl
+          ? new URL(tourEl.getAttribute("href"), origin).href
+          : null;
+        const tourLogoEl = infoRow.querySelector(
+          ".league-icon-small-image img"
+        );
+        const tourLogo = tourLogoEl
+          ? new URL(tourLogoEl.getAttribute("src"), origin).href
+          : null;
+
+        if (team1 && team2) {
+          out.push({
+            id: `${team1}-${team2}-${
+              date ? date.replace(/\s+/g, "_") : "unknown"
+            }`,
+            team1,
+            team1Logo,
+            team2,
+            team2Logo,
+            bo,
+            date,
+            streams: { twitch, youtube },
+            tournament: { name: tourName, url: tourUrl, logo: tourLogo },
+          });
+        }
+      }
+      return out;
+    });
+
+    // Borramos e insertamos en la BD
     await db.execute("DELETE FROM matches_upcoming");
     for (const m of matches) {
       await db.execute(
         `INSERT INTO matches_upcoming
-         (id, team1, team2, bo, date,
-          streams_twitch, streams_youtube,
-          tournament_name, tournament_url, tournament_logo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           (id, team1, team1Logo, team2, team2Logo,
+            bo, date, streams_twitch, streams_youtube,
+            tournament_name, tournament_url, tournament_logo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           m.id,
           m.team1,
+          m.team1Logo,
           m.team2,
+          m.team2Logo,
           m.bo,
           m.date,
           m.streams.twitch,
