@@ -482,34 +482,33 @@ app.post("/matches/sync", async (req, res) => {
       const out = [];
 
       for (const table of tables) {
-        const rows = table.querySelectorAll("tr");
-        if (rows.length < 2) continue;
+        const teamRow = table.querySelector("tr:nth-child(1)");
+        const infoRow = table.querySelector("tr:nth-child(2)");
 
-        const teamRow = rows[0];
-        const infoRow = rows[1];
+        if (!teamRow || !infoRow) continue;
 
         // Equipos
-        const teamLeftCell = teamRow.querySelector("td.team-left");
-        const teamRightCell = teamRow.querySelector("td.team-right");
+        const leftCell = teamRow.querySelector("td.team-left");
+        const rightCell = teamRow.querySelector("td.team-right");
 
-        const leftName =
-          teamLeftCell
+        const team1 =
+          leftCell
             ?.querySelector(".team-template-text a")
             ?.textContent.trim() || null;
-        const leftLogo = teamLeftCell?.querySelector("img")
+        const team1Logo = leftCell?.querySelector("img")
           ? new URL(
-              teamLeftCell.querySelector("img").getAttribute("src"),
+              leftCell.querySelector("img").getAttribute("src"),
               location.origin
             ).href
           : null;
 
-        const rightName =
-          teamRightCell
+        const team2 =
+          rightCell
             ?.querySelector(".team-template-text a")
             ?.textContent.trim() || null;
-        const rightLogo = teamRightCell?.querySelector("img")
+        const team2Logo = rightCell?.querySelector("img")
           ? new URL(
-              teamRightCell.querySelector("img").getAttribute("src"),
+              rightCell.querySelector("img").getAttribute("src"),
               location.origin
             ).href
           : null;
@@ -533,20 +532,22 @@ app.post("/matches/sync", async (req, res) => {
           ? new URL(tourEl.getAttribute("href"), location.origin).href
           : null;
 
-        const logoEl = infoRow.querySelector(".league-icon-small-image img");
-        const tourLogo = logoEl
-          ? new URL(logoEl.getAttribute("src"), location.origin).href
+        const tourLogoEl = infoRow.querySelector(
+          ".league-icon-small-image img"
+        );
+        const tourLogo = tourLogoEl
+          ? new URL(tourLogoEl.getAttribute("src"), location.origin).href
           : null;
 
-        if (leftName && rightName) {
+        if (team1 && team2) {
           out.push({
-            id: `${leftName}-${rightName}-${
+            id: `${team1}-${team2}-${
               date ? date.replace(/\s+/g, "_") : "unknown"
             }`,
-            team1: leftName,
-            team1Logo: leftLogo,
-            team2: rightName,
-            team2Logo: rightLogo,
+            team1,
+            team1Logo,
+            team2,
+            team2Logo,
             bo,
             date,
             streams: { twitch, youtube },
