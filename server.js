@@ -475,76 +475,83 @@ app.post("/matches/sync", async (req, res) => {
       );
       if (!panel) return [];
 
-      const rows = Array.from(
-        panel.querySelectorAll("table.infobox_matches_content > tbody > tr")
+      const tables = Array.from(
+        panel.querySelectorAll("table.infobox_matches_content")
       );
-
       const out = [];
-      for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
 
-        const leftCell = row.querySelector("td.team-left");
-        const rightCell = row.querySelector("td.team-right");
+      for (const table of tables) {
+        const rows = Array.from(table.querySelectorAll("tbody > tr"));
+        for (let i = 0; i < rows.length - 1; i++) {
+          const row = rows[i];
+          const nextRow = rows[i + 1];
 
-        if (leftCell && rightCell) {
-          // Extract teams
-          const leftName =
-            leftCell
-              .querySelector(".team-template-text a")
-              ?.textContent.trim() || null;
-          const leftLogo = leftCell.querySelector("img")
-            ? new URL(
-                leftCell.querySelector("img").getAttribute("src"),
-                location.origin
-              ).href
-            : null;
+          const teamLeftCell = row.querySelector("td.team-left");
+          const teamRightCell = row.querySelector("td.team-right");
 
-          const rightName =
-            rightCell
-              .querySelector(".team-template-text a")
-              ?.textContent.trim() || null;
-          const rightLogo = rightCell.querySelector("img")
-            ? new URL(
-                rightCell.querySelector("img").getAttribute("src"),
-                location.origin
-              ).href
-            : null;
+          if (teamLeftCell && teamRightCell) {
+            const leftName =
+              teamLeftCell
+                .querySelector(".team-template-text a")
+                ?.textContent.trim() || null;
+            const leftLogo = teamLeftCell.querySelector("img")
+              ? new URL(
+                  teamLeftCell.querySelector("img").getAttribute("src"),
+                  location.origin
+                ).href
+              : null;
 
-          // Look ahead to the next row for match info
-          const infoRow = rows[i + 1];
-          const date =
-            infoRow?.querySelector(".timer-object-date")?.textContent.trim() ||
-            null;
-          const bo =
-            row.querySelector(".versus-lower abbr")?.textContent.trim() || null;
-          const twitch =
-            infoRow?.querySelector('a[title*="twitch"]')?.href || null;
-          const youtube =
-            infoRow?.querySelector('a[title*="youtube"]')?.href || null;
+            const rightName =
+              teamRightCell
+                .querySelector(".team-template-text a")
+                ?.textContent.trim() || null;
+            const rightLogo = teamRightCell.querySelector("img")
+              ? new URL(
+                  teamRightCell.querySelector("img").getAttribute("src"),
+                  location.origin
+                ).href
+              : null;
 
-          const tourEl = infoRow?.querySelector(".tournament-text-flex a");
-          const tourName = tourEl?.textContent.trim() || null;
-          const tourUrl = tourEl
-            ? new URL(tourEl.getAttribute("href"), location.origin).href
-            : null;
-          const logoEl = infoRow?.querySelector(".league-icon-small-image img");
-          const tourLogo = logoEl
-            ? new URL(logoEl.getAttribute("src"), location.origin).href
-            : null;
+            const bo =
+              row.querySelector(".versus-lower abbr")?.textContent.trim() ||
+              null;
 
-          out.push({
-            id: `${leftName}-${rightName}-${
-              date ? date.replace(/\s+/g, "_") : "unknown"
-            }`,
-            team1: leftName,
-            team1Logo: leftLogo,
-            team2: rightName,
-            team2Logo: rightLogo,
-            bo,
-            date,
-            streams: { twitch, youtube },
-            tournament: { name: tourName, url: tourUrl, logo: tourLogo },
-          });
+            // Info de la siguiente fila
+            const date =
+              nextRow.querySelector(".timer-object-date")?.textContent.trim() ||
+              null;
+            const twitch =
+              nextRow.querySelector('a[title*="twitch"]')?.href || null;
+            const youtube =
+              nextRow.querySelector('a[title*="youtube"]')?.href || null;
+
+            const tourEl = nextRow.querySelector(".tournament-text-flex a");
+            const tourName = tourEl?.textContent.trim() || null;
+            const tourUrl = tourEl
+              ? new URL(tourEl.getAttribute("href"), location.origin).href
+              : null;
+
+            const logoEl = nextRow.querySelector(
+              ".league-icon-small-image img"
+            );
+            const tourLogo = logoEl
+              ? new URL(logoEl.getAttribute("src"), location.origin).href
+              : null;
+
+            out.push({
+              id: `${leftName}-${rightName}-${
+                date ? date.replace(/\s+/g, "_") : "unknown"
+              }`,
+              team1: leftName,
+              team1Logo: leftLogo,
+              team2: rightName,
+              team2Logo: rightLogo,
+              bo,
+              date,
+              streams: { twitch, youtube },
+              tournament: { name: tourName, url: tourUrl, logo: tourLogo },
+            });
+          }
         }
       }
 
