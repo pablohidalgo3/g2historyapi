@@ -453,141 +453,112 @@ app.post("/matches/sync", async (req, res) => {
     });
 
     const context = await browser.newContext({
+      // mejor usar un UA más moderno para evitar servirse versiones “móviles” o simplificadas
       userAgent:
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.3",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+        "AppleWebKit/537.36 (KHTML, like Gecko) " +
+        "Chrome/114.0.0.0 Safari/537.36",
       viewport: { width: 1280, height: 720 },
     });
 
     const page = await context.newPage();
-
     await page.goto("https://liquipedia.net/leagueoflegends/G2_Esports", {
       waitUntil: "networkidle",
       timeout: 60000,
     });
 
-    const matches = await page.evaluate(() => {
-      const panel = Array.from(
-        document.querySelectorAll(".fo-nttax-infobox.panel")
-      ).find(
-        (p) =>
-          p.querySelector(".infobox-header")?.textContent.trim() ===
-          "Upcoming Matches"
-      );
-
-      if (!panel) return [];
-
-      const tables = Array.from(
-        panel.querySelectorAll("table.infobox_matches_content")
-      );
-      const out = [];
-
-      for (const table of tables) {
-        const teamRow = table.querySelector("tr:nth-child(1)");
-        const infoRow = table.querySelector("tr:nth-child(2)");
-
-        if (!teamRow || !infoRow) continue;
-
-        // Equipos
-        const leftCell = teamRow.querySelector("td.team-left");
-        const rightCell = teamRow.querySelector("td.team-right");
-
-        const team1 =
-          leftCell
-            ?.querySelector(".team-template-text a")
-            ?.textContent.trim() || null;
-        const team1Logo = leftCell?.querySelector("img")
-          ? new URL(
-              leftCell.querySelector("img").getAttribute("src"),
-              location.origin
-            ).href
-          : null;
-
-        const team2 =
-          rightCell
-            ?.querySelector(".team-template-text a")
-            ?.textContent.trim() || null;
-        const team2Logo = rightCell?.querySelector("img")
-          ? new URL(
-              rightCell.querySelector("img").getAttribute("src"),
-              location.origin
-            ).href
-          : null;
-
-        const bo =
-          teamRow.querySelector(".versus-lower abbr")?.textContent.trim() ||
-          null;
-
-        // Info partido
-        const date =
-          infoRow.querySelector(".timer-object-date")?.textContent.trim() ||
-          null;
-        const twitch =
-          infoRow.querySelector('a[title*="twitch"]')?.href || null;
-        const youtube =
-          infoRow.querySelector('a[title*="youtube"]')?.href || null;
-
-        const tourEl = infoRow.querySelector(".tournament-text-flex a");
-        const tourName = tourEl?.textContent.trim() || null;
-        const tourUrl = tourEl
-          ? new URL(tourEl.getAttribute("href"), location.origin).href
-          : null;
-
-        const tourLogoEl = infoRow.querySelector(
-          ".league-icon-small-image img"
-        );
-        const tourLogo = tourLogoEl
-          ? new URL(tourLogoEl.getAttribute("src"), location.origin).href
-          : null;
-
-        if (team1 && team2) {
-          out.push({
-            id: `${team1}-${team2}-${
-              date ? date.replace(/\s+/g, "_") : "unknown"
-            }`,
-            team1,
-            team1Logo,
-            team2,
-            team2Logo,
-            bo,
-            date,
-            streams: { twitch, youtube },
-            tournament: { name: tourName, url: tourUrl, logo: tourLogo },
-          });
-        }
-      }
-
-      return out;
+    // 1) Esperamos a que aparezca el header "Upcoming Matches"
+    await page.waitForSelector(".fo-nttax-infobox.panel .infobox-header", {
+      timeout: 60000,
     });
 
-    // Borrar registros anteriores
-    await db.execute("DELETE FROM matches_upcoming");
+    // 2) Extraemos directamente de cada tabla
+    const matches = await page.$$eval(
+      ".fo-nttax-infobox.panel table.infobox_matches_content",
+      (tables, origin) => {
+        return tables.flatMap((table) => {
+          const team1 = table
+            .querySelector("td.team-left .team-template-text a")
+            ?.textContent.trim();
+          const team2 = table
+            .querySelector("td.team-right .team-template-text a")
+            ?.textContent.trim();
+          if (!team1 || !team2) return [];
 
-    // Insertar los nuevos
-    for (const match of matches) {
+          const bo =
+            table
+              .querySelector("td.team-left .versus-lower abbr")
+              ?.textContent.trim() ?? null;
+          const dateText =
+            table.querySelector(".timer-object-date")?.textContent.trim() ??
+            null;
+          const twitchLink =
+            table.querySelector('a[title*="twitch"]')?.href ?? null;
+          const youtubeLink =
+            table.querySelector('a[title*="youtube"]')?.href ?? null;
+
+          const tourEl = table.querySelector(".tournament-text-flex a");
+          const tourName = tourEl?.textContent.trim() ?? null;
+          const tourUrl = tourEl?.href
+            ? new URL(tourEl.href, origin).href
+            : null;
+
+          const tourLogo = table
+            .querySelector(".league-icon-small-image img")
+            ?.getAttribute("src");
+          const tourLogoUrl = tourLogo ? new URL(tourLogo, origin).href : null;
+
+          return [
+            {
+              id: `${team1}-${team2}-${
+                dateText ? dateText.replace(/\s+/g, "_") : "unknown"
+              }`,
+              team1,
+              team2,
+              bo,
+              date: dateText,
+              streams: { twitch: twitchLink, youtube: youtubeLink },
+              tournament: {
+                name: tourName,
+                url: tourUrl,
+                logo: tourLogoUrl,
+              },
+            },
+          ];
+        });
+      },
+      page.url().startsWith("http")
+        ? new URL(page.url()).origin
+        : "https://liquipedia.net"
+    );
+
+    // Vaciamos y recargamos
+    await db.execute("DELETE FROM matches_upcoming");
+    for (const m of matches) {
       await db.execute(
         `INSERT INTO matches_upcoming
-        (id, team1, team1Logo, team2, team2Logo, bo, date, streams_twitch, streams_youtube, tournament_name, tournament_url, tournament_logo)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (id, team1, team2, bo, date,
+          streams_twitch, streams_youtube,
+          tournament_name, tournament_url, tournament_logo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
-          match.id,
-          match.team1,
-          match.team1Logo,
-          match.team2,
-          match.team2Logo,
-          match.bo,
-          match.date,
-          match.streams.twitch,
-          match.streams.youtube,
-          match.tournament.name,
-          match.tournament.url,
-          match.tournament.logo,
+          m.id,
+          m.team1,
+          m.team2,
+          m.bo,
+          m.date,
+          m.streams.twitch,
+          m.streams.youtube,
+          m.tournament.name,
+          m.tournament.url,
+          m.tournament.logo,
         ]
       );
     }
 
     res.json({ status: "ok", updated: matches.length });
   } catch (err) {
-    console.error("Error en /matches/sync:", err.message);
+    console.error("Error en /matches/sync:", err);
     res.status(500).json({ error: "Error al sincronizar partidos" });
   } finally {
     if (browser) await browser.close();
