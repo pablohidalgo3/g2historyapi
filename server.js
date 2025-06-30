@@ -10,6 +10,16 @@ require("dotenv").config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Middleware de autenticación API Key
+function requireApiKey(req, res, next) {
+  const auth = req.get("Authorization") || "";
+  const [scheme, key] = auth.split(" ");
+  if (scheme !== "Bearer" || key !== process.env.API_KEY) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+  next();
+}
+
 // Configurar cliente Turso
 const db = createClient({
   url: process.env.TURSO_URL,
@@ -62,6 +72,35 @@ app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocs));
 app.get("/", (req, res) => {
   res.redirect(301, "/api-docs");
 });
+
+// Endpoint de salud
+/**
+ * @swagger
+ * /health:
+ *   get:
+ *     summary: Verifica que el servidor esté funcionando
+ *     responses:
+ *       200:
+ *         description: Estado del servidor
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 status:
+ *                   type: string
+ *                   example: "ok"
+ *                 timestamp:
+ *                   type: string
+ *                   format: date-time
+ *                   example: "2025-01-21T08:20:20.123Z"
+ */
+app.get("/health", (req, res) => {
+  res.json({ status: "ok", timestamp: new Date().toISOString() });
+});
+
+// A partir de aquí, protegemos con requireApiKey
+app.use(requireApiKey);
 
 // Rutas de la API
 /**
@@ -759,32 +798,6 @@ END:VCALENDAR
     console.error("Error al generar .ics:", error.message);
     res.status(500).json({ error: "Error interno al generar archivo ICS" });
   }
-});
-
-// Endpoint de salud
-/**
- * @swagger
- * /health:
- *   get:
- *     summary: Verifica que el servidor esté funcionando
- *     responses:
- *       200:
- *         description: Estado del servidor
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 status:
- *                   type: string
- *                   example: "ok"
- *                 timestamp:
- *                   type: string
- *                   format: date-time
- *                   example: "2025-01-21T08:20:20.123Z"
- */
-app.get("/health", (req, res) => {
-  res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
 // Iniciar servidor
