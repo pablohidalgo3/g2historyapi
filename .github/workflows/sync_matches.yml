@@ -2,8 +2,12 @@ name: Sync Matches
 
 on:
   schedule:
-    - cron: '0 0 * * *'    # A las 00:00 UTC
-    - cron: '0 18 * * *'   # A las 18:00 UTC
+    # Cada hora desde las 00:00 hasta las 06:00 UTC
+    - cron: '0 0-6 * * *'
+
+    # Cada hora desde las 16:00 hasta las 23:00 UTC
+    - cron: '0 16-23 * * *'
+
   workflow_dispatch:        # Permite lanzarlo manualmente si quieres
 
 jobs:
