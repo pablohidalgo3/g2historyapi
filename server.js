@@ -729,38 +729,66 @@ app.get("/matches/upcoming", async (req, res) => {
  *       200:
  *         description: Archivo .ics del partido
  */
+// Express endpoint para servir el .ics con autenticación interna
 app.get("/calendar/:id", async (req, res) => {
   const { id } = req.params;
 
   try {
-    // Si no hay partidos en caché, hacer scraping primero
+    // 1) Cargar o refrescar la caché de partidos con API_KEY
     if (!memoryCache.matches) {
       const response = await fetch(
-        "https://g2historyapi.fly.dev/matches/upcoming"
+        "https://g2historyapi.fly.dev/matches/upcoming",
+        {
+          headers: {
+            // Asegúrate de definir process.env.API_KEY en tu entorno
+            Authorization: `Bearer ${process.env.API_KEY}`,
+          },
+        }
       );
+
+      if (!response.ok) {
+        console.error(
+          "Error fetching upcoming matches:",
+          response.status,
+          response.statusText
+        );
+        return res
+          .status(response.status)
+          .json({ error: response.statusText });
+      }
+
       const data = await response.json();
+      if (!Array.isArray(data)) {
+        console.error("Unexpected payload for matches:", data);
+        return res
+          .status(500)
+          .json({ error: "Formato inesperado de datos de partidos" });
+      }
+
       memoryCache.matches = data;
       memoryCache.matchesTimestamp = Date.now();
     }
 
-    // Buscar partido por ID
+    // 2) Buscar el partido por ID
     const match = memoryCache.matches.find((m) => m.id === id);
     if (!match) {
       return res.status(404).json({ error: "Partido no encontrado" });
     }
 
-    // Convertir fecha
-    const rawDate = match.date?.replace(" - ", " ").replace(/UTC.*$/, "UTC");
+    // 3) Parsear fechas
+    const rawDate = match.date
+      ?.replace(" - ", " ")
+      .replace(/UTC.*$/, "UTC");
     const start = new Date(rawDate);
     if (isNaN(start)) {
       return res.status(400).json({ error: "Fecha inválida" });
     }
-
-    const end = new Date(start.getTime() + 60 * 60 * 1000); // duración estimada
+    const end = new Date(start.getTime() + 60 * 60 * 1000);
 
     const formatICSDate = (d) =>
       d.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
 
+    // 4) Construir contenido ICS
     const uid = `${match.id}@g2leaguehistory.online`;
     const summary = `G2 vs ${match.team2} (${
       match.tournament?.name || "Match"
@@ -770,35 +798,40 @@ app.get("/calendar/:id", async (req, res) => {
     }`;
     const location = "Online";
 
-    const ics = `
-BEGIN:VCALENDAR
-VERSION:2.0
-CALSCALE:GREGORIAN
-METHOD:PUBLISH
-PRODID:-//G2 Esports//Match Calendar//EN
-BEGIN:VEVENT
-UID:${uid}
-SUMMARY:${summary}
-DTSTAMP:${formatICSDate(new Date())}
-DTSTART:${formatICSDate(start)}
-DTEND:${formatICSDate(end)}
-DESCRIPTION:${description}
-LOCATION:${location}
-STATUS:CONFIRMED
-SEQUENCE:0
-TRANSP:OPAQUE
-END:VEVENT
-END:VCALENDAR
-`.trim();
+    const ics = [
+      "BEGIN:VCALENDAR",
+      "VERSION:2.0",
+      "CALSCALE:GREGORIAN",
+      "METHOD:PUBLISH",
+      "PRODID:-//G2 Esports//Match Calendar//EN",
+      "BEGIN:VEVENT",
+      `UID:${uid}`,
+      `SUMMARY:${summary}`,
+      `DTSTAMP:${formatICSDate(new Date())}`,
+      `DTSTART:${formatICSDate(start)}`,
+      `DTEND:${formatICSDate(end)}`,
+      `DESCRIPTION:${description}`,
+      `LOCATION:${location}`,
+      "STATUS:CONFIRMED",
+      "SEQUENCE:0",
+      "TRANSP:OPAQUE",
+      "END:VEVENT",
+      "END:VCALENDAR",
+    ].join("\r\n");
 
+    // 5) Enviar el archivo ICS
     res.setHeader("Content-Type", "text/calendar");
-    res.setHeader("Content-Disposition", "attachment; filename=match.ics");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="match-${id}.ics"`
+    );
     res.send(ics);
   } catch (error) {
-    console.error("Error al generar .ics:", error.message);
+    console.error("Error al generar .ics:", error);
     res.status(500).json({ error: "Error interno al generar archivo ICS" });
   }
 });
+
 
 // Iniciar servidor
 app.listen(PORT, () => {
