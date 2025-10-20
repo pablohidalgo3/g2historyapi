@@ -137,106 +137,116 @@ app.post("/matches/sync-dpm", async (req, res) => {
 
     await page.goto(URL, { waitUntil: "domcontentloaded", timeout: 60000 });
 
-    // Espera a que rendericen cabeceras de fecha o marcadores
-    await Promise.race([
-      page.waitForSelector('span.font-bold.text-bl.lg\\:text-bxl.text-black-200', { timeout: 60000 }),
-      page.waitForSelector(".tabular-nums", { timeout: 60000 }),
-    ]);
+    // Espera robusta a que haya tarjetas de partido
+    await page.waitForSelector('div[data-state][id] .grid.grid-cols-8', {
+      timeout: 60000,
+    });
 
     const raw = await page.evaluate(() => {
-      const origin = location.origin;
-      // Mapa de meses en español
-      const MONTHS = {
-        ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
-        jul: 7, ago: 8, sep: 9, sept: 9, oct: 10, nov: 11, dic: 12,
-      };
-
-      const sections = Array.from(
-        document.querySelectorAll('div.flex.flex-col.w-full.gap-4')
-      );
-
-      const out = [];
-
-      for (const sec of sections) {
-        const headerEl = sec.querySelector(':scope > span.font-bold.text-bl.lg\\:text-bxl.text-black-200');
-        if (!headerEl) continue;
-        const headerText = (headerEl.textContent || "").trim().toLowerCase();
-
-        // "miércoles, 22 oct" → día y mes
-        const m = headerText.match(/(\d{1,2})\s+([a-zá]+)/i);
-        let dayNum = null, monthNum = null;
-        if (m) {
-          dayNum = parseInt(m[1], 10);
-          const monKey = m[2]
+      try {
+        const origin = location.origin;
+        const MONTHS = {
+          ene: 1, feb: 2, mar: 3, abr: 4, may: 5, jun: 6,
+          jul: 7, ago: 8, sep: 9, sept: 9, oct: 10, nov: 11, dic: 12,
+        };
+        const stripDiacritics = (s) =>
+          (s || "")
             .normalize("NFD")
-            .replace(/\p{Diacritic}/gu, "")
-            .toLowerCase();
-          monthNum = MONTHS[monKey] || MONTHS[monKey.slice(0, 3)] || null;
+            .replace(/[\u0300-\u036f]/g, "");
+
+        const sections = Array.from(document.querySelectorAll("div.flex.flex-col.w-full.gap-4"));
+        const out = [];
+
+        for (const sec of sections) {
+          const headerEl = sec.querySelector("span.font-bold.text-bl.lg\\:text-bxl.text-black-200");
+          if (!headerEl) continue;
+
+          const headerText = (headerEl.textContent || "").trim().toLowerCase();
+          const m = headerText.match(/(\d{1,2})\s+([a-zá]+)/i);
+          let dayNum = null, monthNum = null;
+          if (m) {
+            dayNum = parseInt(m[1], 10);
+            const monKey = stripDiacritics(m[2]).toLowerCase();
+            monthNum = MONTHS[monKey] || MONTHS[monKey.slice(0, 3)] || null;
+          }
+
+          // Contenedor de tarjetas bajo la sección
+          const cards = Array.from(
+            sec.querySelectorAll('div.flex.flex-col.gap-8 > div[data-state][id]')
+          );
+
+          for (const card of cards) {
+            const grid = card.querySelector("div.grid.grid-cols-8.lg\\:grid-cols-12");
+            if (!grid) continue;
+
+            // Hora HH:MM (dos spans)
+            const left = grid.querySelector("div.min-w-\\[60px\\].lg\\:col-span-3");
+            const hh = left?.querySelector("span.text-bm.lg\\:text-hl.font-bold.text-black-200")?.textContent?.trim() || "";
+            const mm = left?.querySelector("span.text-bxs.lg\\:text-bm.font-bold.text-black-200")?.textContent?.trim() || "";
+
+            // Centro: equipos / logos / resultado
+            const center = grid.querySelector("div.grid.grid-cols-11.lg\\:grid-cols-10.items-center");
+            if (!center) continue;
+
+            const a1 = center.querySelector("a:nth-of-type(1)");
+            const team1 = a1?.querySelector(".font-bold.text-bm.lg\\:text-bxl")?.textContent?.trim() || null;
+            const team1LogoEl = a1?.querySelector('img[alt="Team1"]');
+            const team1LogoSrc = team1LogoEl?.getAttribute("src") || team1LogoEl?.getAttribute("data-src") || null;
+            const team1Logo = team1LogoSrc ? new URL(team1LogoSrc, origin).href : null;
+
+            // Resultado (puede ser "-" o "1-0", "3-1", etc.)
+            const scoreContainer = center.querySelector("div.col-span-3.lg\\:col-span-2");
+            let score = "-";
+            if (scoreContainer) {
+              const txt = (scoreContainer.textContent || "").replace(/\s+/g, "");
+              const hit = txt.match(/^\d+-\d+$/) || txt.match(/^-$/);
+              score = hit ? hit[0] : "-";
+            }
+
+            const a2 = center.querySelector("a:nth-of-type(2)");
+            const team2 = a2?.querySelector(".font-bold.text-bm.lg\\:text-bxl")?.textContent?.trim() || null;
+            const team2LogoEl = a2?.querySelector('img[alt="Team2"]');
+            const team2LogoSrc = team2LogoEl?.getAttribute("src") || team2LogoEl?.getAttribute("data-src") || null;
+            const team2Logo = team2LogoSrc ? new URL(team2LogoSrc, origin).href : null;
+
+            // Derecha: torneo + fase/BO + logo torneo
+            const right = grid.querySelector("div.lg\\:col-span-3");
+            const rightText = right?.querySelector("div.hidden.lg\\:flex.flex-col.items-end.font-semibold.text-bm");
+            const tournamentName = rightText?.querySelector("span:first-child")?.textContent?.trim() || null;
+            const phaseAndBo = rightText?.querySelector("span.text-black-300")?.textContent?.trim() || null;
+
+            const leagueA = right?.querySelector('a[href^="/esport/leagues/"]');
+            const tournamentUrl = leagueA ? new URL(leagueA.getAttribute("href"), origin).href : null;
+            const leagueLogoEl = leagueA?.querySelector('img[alt="League"]');
+            const leagueLogoSrc = leagueLogoEl?.getAttribute("src") || leagueLogoEl?.getAttribute("data-src") || null;
+            const tournamentLogo = leagueLogoSrc ? new URL(leagueLogoSrc, origin).href : null;
+
+            out.push({
+              dayNum, monthNum, hh, mm,
+              team1, team1Logo,
+              team2, team2Logo,
+              score,
+              phaseAndBo,
+              tournamentName,
+              tournamentUrl,
+              tournamentLogo,
+            });
+          }
         }
-
-        const cards = Array.from(
-          sec.querySelectorAll(':scope > div.flex.flex-col.gap-8 > div[data-state][id]')
-        );
-
-        for (const card of cards) {
-          const grid = card.querySelector('div.grid.grid-cols-8.lg\\:grid-cols-12');
-          if (!grid) continue;
-
-          // Hora HH:MM
-          const left = grid.querySelector('div.min-w-\\[60px\\].lg\\:col-span-3');
-          const hh = left?.querySelector('span.text-bm.lg\\:text-hl.font-bold.text-black-200')?.textContent?.trim() || "";
-          const mm = left?.querySelector('span.text-bxs.lg\\:text-bm.font-bold.text-black-200')?.textContent?.trim() || "";
-
-          // Centro: equipos + marcador
-          const center = grid.querySelector('div.grid.grid-cols-11.lg\\:grid-cols-10.items-center');
-          if (!center) continue;
-
-          const a1 = center.querySelector('a:nth-of-type(1)');
-          const team1 = a1?.querySelector('.font-bold.text-bm.lg\\:text-bxl')?.textContent?.trim() || null;
-          const team1LogoEl = a1?.querySelector('img[alt="Team1"][src]');
-          const team1Logo = team1LogoEl ? new URL(team1LogoEl.getAttribute("src"), origin).href : null;
-
-          const scoreEl = center.querySelector('div.col-span-3.lg\\:col-span-2 div.tabular-nums > div');
-          const score = (scoreEl?.textContent || "").replace(/\s+/g, "") || "-";
-
-          const a2 = center.querySelector('a:nth-of-type(2)');
-          const team2 = a2?.querySelector('.font-bold.text-bm.lg\\:text-bxl')?.textContent?.trim() || null;
-          const team2LogoEl = a2?.querySelector('img[alt="Team2"][src]');
-          const team2Logo = team2LogoEl ? new URL(team2LogoEl.getAttribute("src"), origin).href : null;
-
-          // Derecha: torneo + fase/BO + logo torneo
-          const right = grid.querySelector('div.lg\\:col-span-3');
-          const rightText = right?.querySelector('div.hidden.lg\\:flex.flex-col.items-end.font-semibold.text-bm');
-          const tournamentName = rightText?.querySelector('span:first-child')?.textContent?.trim() || null;
-          const phaseAndBo = rightText?.querySelector('span.text-black-300')?.textContent?.trim() || null;
-
-          const leagueA = right?.querySelector('a[href^="/esport/leagues/"]');
-          const tournamentUrl = leagueA ? new URL(leagueA.getAttribute("href"), origin).href : null;
-          const leagueLogoEl = leagueA?.querySelector('img[alt="League"][src]');
-          const tournamentLogo = leagueLogoEl ? new URL(leagueLogoEl.getAttribute("src"), origin).href : null;
-
-          out.push({
-            dayNum,
-            monthNum,
-            hh,
-            mm,
-            team1, team1Logo,
-            team2, team2Logo,
-            score,
-            phaseAndBo,
-            tournamentName,
-            tournamentUrl,
-            tournamentLogo,
-          });
-        }
+        return { ok: true, items: out };
+      } catch (e) {
+        return { ok: false, error: String(e?.message || e) };
       }
-      return out;
     });
+
+    if (!raw.ok) {
+      console.error("page.evaluate error:", raw.error);
+      throw new Error("Fallo extrayendo HTML en dpm.lol");
+    }
 
     // ===== Helpers de fecha (sin librerías externas) =====
     const TZ = "Europe/Madrid";
 
-    // offset (ms) para una Date en un timeZone
     function getTzOffsetMs(date, timeZone) {
       const f = new Intl.DateTimeFormat("en-US", {
         timeZone,
@@ -262,48 +272,41 @@ app.post("/matches/sync-dpm", async (req, res) => {
       return asUTC - date.getTime();
     }
 
-    // Convierte componentes locales (Europe/Madrid) → timestamp real UTC (ms)
     function toZonedTimestamp(year, month, day, hour, minute) {
       const guess = new Date(Date.UTC(year, month - 1, day, hour, minute, 0));
       const offset = getTzOffsetMs(guess, TZ);
       return Date.UTC(year, month - 1, day, hour, minute, 0) - offset;
     }
 
-    // "Ahora" y "hace 7 días" en el reloj de Madrid
     function nowInTz(timeZone) {
       const now = new Date();
       const offset = getTzOffsetMs(now, timeZone);
       return new Date(now.getTime() + offset);
     }
+
     const nowTz = nowInTz(TZ);
     const weekAgoTz = new Date(nowTz.getTime() - 7 * 24 * 60 * 60 * 1000);
     const currentYear = nowTz.getFullYear();
 
-    const parsed = raw
+    const parsed = raw.items
       .map((m) => {
+        if (!m.team1 || !m.team2) return null;
+
         const day = Number(m.dayNum) || nowTz.getDate();
         const month = Number(m.monthNum) || nowTz.getMonth() + 1;
         const HH = String(m.hh || "00").padStart(2, "0");
         const MM = String(m.mm || "00").padStart(2, "0");
 
-        const ts = toZonedTimestamp(
-          currentYear,
-          month,
-          day,
-          Number(HH),
-          Number(MM)
-        );
+        const ts = toZonedTimestamp(currentYear, month, day, Number(HH), Number(MM));
         const dtMadrid = new Date(ts);
-        const dateISO = new Date(ts).toISOString(); // ISO UTC
+        const dateISO = new Date(ts).toISOString(); // UTC
 
-        // "Playoffs - BO3" → "BO3"
         const boMatch = (m.phaseAndBo || "").match(/\bBO\d\b/i);
         const bo = boMatch ? boMatch[0].toUpperCase() : null;
 
-        // ID estable: team1-team2-YYYYMMDDTHHMMZ-BOx
         const id = [
-          m.team1 || "T1",
-          m.team2 || "T2",
+          m.team1,
+          m.team2,
           dateISO.replace(/[-:]/g, "").slice(0, 13) + "00Z",
           bo || "BO?"
         ].join("-");
@@ -316,23 +319,18 @@ app.post("/matches/sync-dpm", async (req, res) => {
           team1Logo: m.team1Logo,
           team2: m.team2,
           team2Logo: m.team2Logo,
-          score: m.score || "-",
-          phaseAndBo: m.phaseAndBo,
           bo,
           tournament_name: m.tournamentName,
           tournament_url: m.tournamentUrl,
           tournament_logo: m.tournamentLogo,
         };
       })
-      .filter((r) => r.team1 && r.team2);
+      .filter(Boolean);
 
-    // Filtrado por ventana [weekAgoTz, nowTz] en horario de Madrid
     const lastWeek = parsed.filter((r) => r.dtMadrid >= weekAgoTz && r.dtMadrid <= nowTz);
 
-    // ==== PERSISTENCIA: igual que tu endpoint de Liquipedia (MISMA TABLA/CAMPOS) ====
-    // Limpia e inserta en matches_upcoming
+    // === PERSISTENCIA EN LA MISMA TABLA / CAMPOS QUE YA USAS ===
     await db.execute("DELETE FROM matches_upcoming");
-
     for (const m of lastWeek) {
       await db.execute(
         `INSERT INTO matches_upcoming
@@ -346,10 +344,10 @@ app.post("/matches/sync-dpm", async (req, res) => {
           m.team1Logo,
           m.team2,
           m.team2Logo,
-          m.bo,                        // "BO1"/"BO3"/"BO5"
-          m.dateISO,                   // fecha en ISO UTC; tu /calendar la parsea bien
-          null,                        // streams_twitch (DPM no lo expone)
-          null,                        // streams_youtube
+          m.bo,
+          m.dateISO,     // ISO UTC; tu /calendar lo parsea sin problemas
+          null,          // DPM no publica streams en esta vista
+          null,
           m.tournament_name,
           m.tournament_url,
           m.tournament_logo,
@@ -359,7 +357,7 @@ app.post("/matches/sync-dpm", async (req, res) => {
 
     res.json({ status: "ok", updated: lastWeek.length });
   } catch (err) {
-    console.error("Error en /matches/sync-dpm:", err);
+    console.error("Error en /matches/sync-dpm:", err && err.stack ? err.stack : err);
     res.status(500).json({ error: "Error al sincronizar partidos (dpm.lol)" });
   } finally {
     if (browser) await browser.close();
